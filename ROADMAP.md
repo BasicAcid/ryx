@@ -90,26 +90,44 @@ ryx-cluster chaos --kill 30%     # Test fault tolerance
 ### Phase 2: Distributed Computation Engine
 **Goal**: Real computational work spreading through the network
 
+#### Phase 2A: Information Diffusion Foundation 🚧 IN PROGRESS
+**Goal**: Energy-based message spreading with local development orchestration
+
+**Key deliverables**:
+- Energy-based information diffusion with decay and TTL
+- Content-addressable message storage and deduplication
+- HTTP `/inject` endpoint for seeding information into network
+- Message propagation tracking (energy, hops, path)
+- Basic `ryx-cluster` tool for local multi-node testing
+- Automatic port allocation and process management
+
+**Success criteria**: Inject information into one node, watch it spread across entire network with energy decay, visualize propagation paths
+
+#### Phase 2B: Computational Tasks ⏳ PLANNED
+**Goal**: Distributed computation execution and result aggregation
+
 **Key deliverables**:
 - Task injection and energy-based task diffusion
 - Local computation execution (word counting, log analysis, search)
 - Result aggregation through neighbor consensus
-- Content-addressable data management
 - Memory-bounded operation with automatic garbage collection
+- Enhanced `ryx-cluster` with computation monitoring
 
-**Success criteria**: Can inject computation task, see it spread and execute across nodes, collect aggregated results
+**Success criteria**: Inject computation task, see it spread and execute across nodes, collect aggregated results
 
-### Phase 3: Development Tooling
-**Goal**: `ryx-cluster` for easy local development and testing
+### Phase 3: Advanced Development Tooling ⏳ PLANNED
+**Goal**: Enhanced `ryx-cluster` for sophisticated testing and development
 
 **Key deliverables**:
-- Multi-node process management with port allocation
-- Cluster-wide task injection and monitoring
-- Chaos engineering capabilities (node kills, network partitions)
+- Large-scale cluster simulation (50+ nodes)
+- Advanced chaos engineering (network partitions, resource constraints)
 - Performance benchmarking and comparison tools
-- Automated testing scenarios
+- Automated testing scenarios and regression tests
+- Cluster topology visualization and metrics
 
-**Success criteria**: Can easily spawn large local clusters, inject realistic workloads, test fault scenarios
+**Success criteria**: Can easily spawn large local clusters, inject realistic workloads, test complex fault scenarios
+
+**Note**: Basic `ryx-cluster` functionality implemented in Phase 2A
 
 ### Phase 4: Production Readiness
 **Goal**: Multi-machine deployment and robust operation
@@ -154,6 +172,13 @@ ryx-cluster chaos --kill 30%     # Test fault tolerance
 - **Control**: HTTP REST API on each node (debuggable, firewall-friendly)
 - **Data format**: JSON messages (human-readable, language-agnostic)
 - **Discovery**: UDP broadcast (local) + seed nodes (distributed)
+
+### Information Diffusion Model (Phase 2A)
+- **Message structure**: Content-addressable with energy, TTL, and hop tracking
+- **Energy decay**: Messages lose energy as they spread, preventing infinite loops
+- **Deduplication**: Content hashing prevents duplicate processing
+- **Path tracking**: Maintains propagation history for debugging and visualization
+- **TTL management**: Automatic cleanup prevents memory exhaustion
 
 ### Computation Model
 - **Task representation**: Content-addressable with energy and metadata
@@ -254,4 +279,46 @@ ryx-cluster chaos --kill 30%     # Test fault tolerance
 
 ---
 
-**Next Step**: Begin Phase 1 implementation with `ryx-node` logical neighbor discovery and basic communication protocols.
+## Current Status: Phase 2A In Progress 🚧
+
+**Completed**: 
+- ✅ Phase 1: Core `ryx-node` daemon with neighbor discovery and HTTP API
+- ✅ Go-based implementation with single binary deployment
+- ✅ Successful multi-node local cluster testing
+- ✅ Production-ready documentation and development guidelines
+
+**Current Phase 2A Development**:
+- 🚧 Energy-based information diffusion system
+- 🚧 `/inject` HTTP endpoint for seeding information
+- 🚧 Basic `ryx-cluster` orchestration tool
+- 🚧 Content-addressable message storage
+
+**Next Steps**:
+1. Implement information diffusion with energy decay
+2. Add message injection and tracking endpoints
+3. Create `ryx-cluster` for automated local testing
+4. Demonstrate information spreading across network
+
+**Quick Test (Current)**:
+```bash
+# Build and test current implementation
+go build -o ryx-node ./cmd/ryx-node
+
+# Start multiple nodes
+./ryx-node --port 9010 --http-port 8010
+./ryx-node --port 9011 --http-port 8011  
+./ryx-node --port 9012 --http-port 8012
+
+# Check neighbor discovery working
+curl http://localhost:8010/status | jq '.neighbors'
+```
+
+**Phase 2A Target**:
+```bash
+# Future Phase 2A workflow
+go build -o ryx-cluster ./cmd/ryx-cluster
+ryx-cluster start --nodes 5
+ryx-cluster inject --content "test message" --energy 10
+ryx-cluster status --show-diffusion
+# Watch message spread across all nodes with energy decay!
+```
