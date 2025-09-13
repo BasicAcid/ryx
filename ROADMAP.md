@@ -281,7 +281,7 @@ ryx-cluster chaos --kill 30%     # Test fault tolerance
 
 ## Current Status: Phase 2A In Progress 🚧
 
-**Completed**: 
+**Completed**:
 - ✅ Phase 1: Core `ryx-node` daemon with neighbor discovery and HTTP API
 - ✅ Go-based implementation with single binary deployment
 - ✅ Successful multi-node local cluster testing
@@ -306,7 +306,7 @@ go build -o ryx-node ./cmd/ryx-node
 
 # Start multiple nodes
 ./ryx-node --port 9010 --http-port 8010
-./ryx-node --port 9011 --http-port 8011  
+./ryx-node --port 9011 --http-port 8011
 ./ryx-node --port 9012 --http-port 8012
 
 # Check neighbor discovery working

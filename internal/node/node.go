@@ -11,6 +11,7 @@ import (
 
 	"github.com/BasicAcid/ryx/internal/api"
 	"github.com/BasicAcid/ryx/internal/communication"
+	"github.com/BasicAcid/ryx/internal/diffusion"
 	"github.com/BasicAcid/ryx/internal/discovery"
 )
 
@@ -28,6 +29,7 @@ type Node struct {
 	config    *Config
 	discovery *discovery.Service
 	comm      *communication.Service
+	diffusion *diffusion.Service
 	api       *api.Server
 	mu        sync.RWMutex
 	running   bool
@@ -58,6 +60,9 @@ func New(config *Config) (*Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create communication service: %w", err)
 	}
+
+	// Initialize diffusion service
+	node.diffusion = diffusion.New(nodeID)
 
 	node.api, err = api.New(config.HTTPPort, node)
 	if err != nil {
@@ -93,6 +98,11 @@ func (n *Node) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start discovery: %w", err)
 	}
 
+	// Start diffusion service
+	if err := n.diffusion.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start diffusion: %w", err)
+	}
+
 	// Start HTTP API server
 	if err := n.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API server: %w", err)
@@ -118,6 +128,9 @@ func (n *Node) Stop() {
 	// Stop services in reverse order
 	if n.api != nil {
 		n.api.Stop()
+	}
+	if n.diffusion != nil {
+		n.diffusion.Stop()
 	}
 	if n.discovery != nil {
 		n.discovery.Stop()
@@ -149,7 +162,16 @@ func (n *Node) GetStatus() map[string]interface{} {
 		status["neighbors"] = n.discovery.GetNeighbors()
 	}
 
+	if n.diffusion != nil {
+		status["diffusion"] = n.diffusion.GetStats()
+	}
+
 	return status
+}
+
+// GetDiffusionService returns the diffusion service for API access
+func (n *Node) GetDiffusionService() *diffusion.Service {
+	return n.diffusion
 }
 
 // generateNodeID creates a random node identifier
