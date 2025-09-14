@@ -115,31 +115,55 @@ ryx-cluster chaos --kill 30%     # Test fault tolerance
 
 **Results**: Information injected on one node automatically spreads across the entire network with proper energy decay and loop prevention
 
-#### Phase 2C: Computational Tasks ⏳ PLANNED
+#### Phase 2C: Computational Tasks ✅ COMPLETE
 **Goal**: Distributed computation execution and result aggregation
 
 **Key deliverables**:
-- Task injection and energy-based task diffusion
-- Local computation execution (word counting, log analysis, search)
-- Result aggregation through neighbor consensus
-- Memory-bounded operation with automatic garbage collection
-- Enhanced `ryx-cluster` with computation monitoring
+- Task injection and energy-based task diffusion ✅
+- Local computation execution (WordCount executor implemented) ✅
+- Automatic result consensus through content-addressable storage ✅
+- Memory-bounded operation with automatic garbage collection ✅
+- Computation service integrated into node lifecycle ✅
+- HTTP API endpoints for task management (`/compute`) ✅
 
-**Success criteria**: Inject computation task, see it spread and execute across nodes, collect aggregated results
+**Results**: Computational tasks spread through network energy-based diffusion, execute locally on each node, and achieve automatic consensus through identical result deduplication
 
 ### Phase 3: Advanced Development Tooling ⏳ PLANNED
-**Goal**: Enhanced `ryx-cluster` for sophisticated testing and development
+**Goal**: Transform `ryx-cluster` into a sophisticated development and testing platform
+
+**Current Foundation**: Basic cluster management (start/stop/status/inject) operational with up to ~10 nodes
+
+#### Phase 3A: Enhanced Cluster Management ⏳ NEXT
+**Goal**: Large-scale cluster simulation and resilience testing
 
 **Key deliverables**:
-- Large-scale cluster simulation (50+ nodes)
-- Advanced chaos engineering (network partitions, resource constraints)
-- Performance benchmarking and comparison tools
-- Automated testing scenarios and regression tests
-- Cluster topology visualization and metrics
+- Large-scale cluster support (50-100+ nodes with smart resource management)
+- Advanced chaos engineering (node failures, network partitions, resource constraints)
+- Performance benchmarking framework (diffusion speed, computation throughput)
+- Automated testing scenarios with JSON/YAML test definitions
+- Batch operations and parallel node management for faster cluster lifecycle
 
-**Success criteria**: Can easily spawn large local clusters, inject realistic workloads, test complex fault scenarios
+#### Phase 3B: Visualization and Monitoring ⏳ PLANNED
+**Goal**: Comprehensive system observability and visualization
 
-**Note**: Basic `ryx-cluster` functionality implemented in Phase 2A
+**Key deliverables**:
+- Real-time network topology visualization (terminal and web-based)
+- Advanced metrics collection (network, computation, cluster health)
+- Historical data analysis and alerting
+- Interactive dashboards for cluster monitoring
+- Export capabilities for network topology and performance reports
+
+#### Phase 3C: Advanced Computation Management ⏳ PLANNED  
+**Goal**: Sophisticated distributed computation orchestration
+
+**Key deliverables**:
+- Enhanced computation orchestration and task queuing
+- Advanced result aggregation for non-deterministic tasks
+- Multi-stage computation pipelines
+- Real-time computation progress tracking across cluster
+- Integration with CI/CD pipelines for automated testing
+
+**Success criteria**: Can spawn 50+ node clusters, run comprehensive fault scenarios, visualize network behavior, and validate system performance at scale
 
 ### Phase 4: Production Readiness
 **Goal**: Multi-machine deployment and robust operation

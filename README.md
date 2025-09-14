@@ -23,6 +23,13 @@ A practical implementation of Dave Ackley's robust-first distributed computing m
 - **Loop prevention**: Path tracking prevents infinite message cycles
 - **Hop tracking**: Full propagation history maintained for analysis
 
+### Phase 2C: Distributed Computation (Complete)
+- **Task injection**: Inject computational tasks via HTTP API (`/compute`)
+- **Energy-based task distribution**: Tasks spread through network using existing diffusion system
+- **Local computation execution**: WordCount executor processes tasks on each node
+- **Automatic consensus**: Identical results achieve consensus through content-addressable storage
+- **Result aggregation**: Query computation results across the network
+
 ## Quick Start
 
 ### Automated Cluster Testing
@@ -38,7 +45,12 @@ go build -o ryx-cluster ./cmd/ryx-cluster
 # Inject information that spreads across all nodes (Phase 2B)
 ./ryx-cluster -cmd inject -content "Hello Ryx Network" -energy 3
 
-# Check cluster status and diffusion results
+# Inject computational task that executes across cluster (Phase 2C)
+curl -X POST localhost:8010/compute \
+  -H "Content-Type: application/json" \
+  -d '{"type":"wordcount","data":"distributed computing with ryx","energy":2}'
+
+# Check cluster status and results
 ./ryx-cluster -cmd status
 
 # Stop the cluster
@@ -122,6 +134,13 @@ Each node exposes a REST API on its HTTP port:
 | `/info` | GET | List all stored information | Count + info list |
 | `/info/{id}` | GET | Get specific information by ID | Info details |
 
+#### Distributed Computation (Phase 2C)
+| Endpoint | Method | Description | Response |
+|----------|--------|-------------|----------|
+| `/compute` | POST | Inject computational task that executes across network | Task details |
+| `/compute` | GET | List active and completed computations | Computation status |
+| `/compute/{id}` | GET | Get specific computation result | Result details |
+
 ### API Examples
 
 ```bash
@@ -182,6 +201,37 @@ curl http://localhost:8011/info/9f86d081884c7d65
     "hops": 1,           # One hop from original node
     "path": ["node_f4960d50", "node_f4960d50"]  # Propagation path
     ...
+  }
+}
+
+# Inject computational task (Phase 2C)
+curl -X POST http://localhost:8010/compute \
+  -H "Content-Type: application/json" \
+  -d '{"type":"wordcount","data":"hello world ryx","energy":2}'
+{
+  "success": true,
+  "message": "Computational task injected successfully",
+  "task": {
+    "id": "abc123def456",
+    "type": "wordcount",
+    "energy": 2,
+    "timestamp": 1757760000
+  }
+}
+
+# Check computation results on different nodes
+curl http://localhost:8011/compute/abc123def456
+{
+  "task_id": "abc123def456",
+  "result": {
+    "task_type": "wordcount",
+    "result": {
+      "total_words": 3,
+      "unique_words": 3,
+      "word_counts": {"hello": 1, "world": 1, "ryx": 1}
+    },
+    "executed_by": "node_abc123",
+    "execution_time": 5
   }
 }
 
@@ -300,12 +350,16 @@ Neighbor Nodes: energy=2, hops=1, path=["node_A", "node_A"]
 ```
 ryx/
 ├── cmd/
-│   └── ryx-node/           # Main node binary
+│   ├── ryx-node/           # Main node binary
+│   └── ryx-cluster/        # Cluster management tool
 ├── internal/
 │   ├── node/               # Core node logic
-│   ├── discovery/          # Neighbor discovery
+│   ├── discovery/          # Neighbor discovery  
 │   ├── communication/      # UDP messaging
-│   └── api/                # HTTP API server
+│   ├── diffusion/          # Information diffusion
+│   ├── computation/        # Distributed computation
+│   ├── api/                # HTTP API server
+│   └── types/              # Shared data structures
 ├── go.mod                  # Go module
 ├── ROADMAP.md             # Development roadmap
 └── README.md              # This file
@@ -362,10 +416,19 @@ pkill ryx-node
 - Energy decay limiting propagation distance
 - Hop counting for diffusion analysis
 
-### Phase 2C: Computation Engine (Next)
-- Distributed task execution with result collection
-- Energy-based work distribution
-- Result aggregation through neighbor consensus
+### Phase 2C: Distributed Computation (Complete)
+- Distributed task execution with automatic result collection
+- Energy-based task distribution using existing diffusion system  
+- Automatic consensus through content-addressable storage
+- WordCount executor with configurable parameters
+- HTTP API for task injection and result queries (`/compute`)
+
+### Phase 3: Advanced Development Tooling (Next)
+- Large-scale cluster simulation (50+ nodes)
+- Advanced chaos engineering and fault testing
+- Performance benchmarking and metrics collection
+- Automated testing scenarios and regression tests
+- Network topology visualization and monitoring
 
 ### 📋 Phase 3: Advanced Development Tools
 - Large-scale cluster simulation
@@ -396,4 +459,4 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Status**: Phase 2B complete - Inter-node information diffusion operational
+**Status**: Phase 2C complete - Distributed computation with automatic consensus operational
