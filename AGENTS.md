@@ -2,7 +2,9 @@
 
 ## Build/Lint/Test Commands
 - **Build main binary**: `go build -o ryx-node ./cmd/ryx-node`
+- **Build cluster tool**: `go build -o ryx-cluster ./cmd/ryx-cluster`
 - **Run single node**: `./ryx-node --port 9010 --http-port 8010`
+- **Test large cluster**: `./ryx-cluster -cmd start -profile huge` (50 nodes)
 - **Test compilation**: `go build ./...`
 - **Format code**: `go fmt ./...`
 - **Run tests**: `go test ./...` (when tests are added)
@@ -43,9 +45,10 @@
 ### Concurrency
 - Use goroutines for concurrent operations: `go s.messageLoop()`
 - Use contexts for cancellation: `context.WithCancel(ctx)`
-- Protect shared state with mutexes: `sync.RWMutex`
+- **Always protect shared state with mutexes**: `sync.RWMutex` for read-heavy, `sync.Mutex` for mixed access
 - Use channels for communication between goroutines
 - Handle context cancellation in loops: `select { case <-ctx.Done(): return }`
+- **Critical**: Maps are not thread-safe in Go - always use mutex protection for concurrent map access
 
 ### Network Programming
 - Set appropriate timeouts on network operations
@@ -72,3 +75,16 @@
 - Test failure scenarios (node deaths, network partitions)
 - Use table-driven tests for multiple scenarios
 - Test both success and failure paths
+
+### UI/UX Guidelines
+- **Minimize emoji usage**: Avoid emojis in code output, logs, and documentation
+- Use clear, descriptive text instead of visual symbols
+- Prefer professional terminal output for production systems
+- Use consistent formatting for status messages and progress indicators
+
+### Large-Scale Cluster Guidelines (Phase 3A+)
+- **Race condition prevention**: Always use mutex protection for shared data structures
+- **Parallel operations**: Batch concurrent operations to avoid resource exhaustion
+- **Performance testing**: Measure startup times and resource usage for clusters 30+ nodes
+- **Memory management**: Monitor memory usage during large cluster operations
+- **Error handling**: Provide clear error messages for resource constraints and failures

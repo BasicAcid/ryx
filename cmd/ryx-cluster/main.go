@@ -10,9 +10,19 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
+
+// ClusterProfile defines predefined cluster configurations
+type ClusterProfile struct {
+	Name        string
+	NodeCount   int
+	BatchSize   int
+	PortRange   [2]int // [start, end]
+	Description string
+}
 
 // ClusterConfig holds the cluster configuration
 type ClusterConfig struct {
@@ -22,6 +32,9 @@ type ClusterConfig struct {
 	ClusterID    string
 	NodeBinary   string
 	PIDFile      string
+	BatchSize    int
+	Parallel     bool
+	Profile      *ClusterProfile
 }
 
 // NodeInfo holds information about a running node
@@ -45,13 +58,15 @@ type SerializableNodeInfo struct {
 type Cluster struct {
 	config  *ClusterConfig
 	nodes   map[int]*NodeInfo
+	nodesMx sync.RWMutex
 	running bool
 }
 
 func main() {
 	var (
-		command      = flag.String("cmd", "help", "Command: start, stop, status, inject, help")
+		command      = flag.String("cmd", "help", "Command: start, stop, status, inject, help, chaos, benchmark")
 		nodes        = flag.Int("nodes", 3, "Number of nodes to start")
+		profile      = flag.String("profile", "", "Cluster profile: small, medium, large, huge")
 		basePort     = flag.Int("base-port", 9010, "Base port for nodes")
 		baseHTTPPort = flag.Int("base-http-port", 8010, "Base HTTP port for nodes")
 		clusterID    = flag.String("cluster-id", "test", "Cluster identifier")
@@ -59,8 +74,31 @@ func main() {
 		energy       = flag.Int("energy", 5, "Energy for injected information")
 		ttl          = flag.Int("ttl", 300, "TTL in seconds for injected information")
 		nodeID       = flag.Int("node", 0, "Specific node ID (0-based) for injection")
+		batchSize    = flag.Int("batch-size", 10, "Number of nodes to start in parallel")
+		parallel     = flag.Bool("parallel", true, "Use parallel node operations")
 	)
 	flag.Parse()
+
+	// Define cluster profiles
+	profiles := map[string]*ClusterProfile{
+		"small":  {Name: "small", NodeCount: 5, BatchSize: 3, PortRange: [2]int{9010, 9050}, Description: "Small cluster for basic testing"},
+		"medium": {Name: "medium", NodeCount: 15, BatchSize: 5, PortRange: [2]int{9010, 9100}, Description: "Medium cluster for moderate testing"},
+		"large":  {Name: "large", NodeCount: 30, BatchSize: 8, PortRange: [2]int{9010, 9200}, Description: "Large cluster for heavy testing"},
+		"huge":   {Name: "huge", NodeCount: 50, BatchSize: 10, PortRange: [2]int{9010, 9300}, Description: "Huge cluster for maximum scale testing"},
+	}
+
+	// Apply profile if specified
+	var selectedProfile *ClusterProfile
+	if *profile != "" {
+		if p, exists := profiles[*profile]; exists {
+			selectedProfile = p
+			*nodes = p.NodeCount
+			*batchSize = p.BatchSize
+			fmt.Printf("Using profile '%s': %s (%d nodes)\n", p.Name, p.Description, p.NodeCount)
+		} else {
+			log.Fatalf("Unknown profile: %s. Available profiles: small, medium, large, huge", *profile)
+		}
+	}
 
 	config := &ClusterConfig{
 		Nodes:        *nodes,
@@ -69,6 +107,9 @@ func main() {
 		ClusterID:    *clusterID,
 		NodeBinary:   "./ryx-node",
 		PIDFile:      ".ryx-cluster.pids",
+		BatchSize:    *batchSize,
+		Parallel:     *parallel,
+		Profile:      selectedProfile,
 	}
 
 	cluster := &Cluster{
@@ -82,7 +123,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to start cluster: %v", err)
 		}
-		fmt.Printf("✅ Started %d-node ryx cluster\n", config.Nodes)
+		fmt.Printf("Started %d-node ryx cluster\n", config.Nodes)
 		cluster.PrintStatus()
 
 	case "stop":
@@ -90,7 +131,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to stop cluster: %v", err)
 		}
-		fmt.Printf("✅ Stopped ryx cluster\n")
+		fmt.Printf("Stopped ryx cluster\n")
 
 	case "status":
 		err := cluster.LoadFromPIDFile()
@@ -108,7 +149,23 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to inject information: %v", err)
 		}
-		fmt.Printf("✅ Injected information into node %d\n", *nodeID)
+		fmt.Printf("Injected information into node %d\n", *nodeID)
+
+	case "chaos":
+		fmt.Printf("🌪️  Chaos engineering not yet implemented - coming in Phase 3A!\n")
+		fmt.Printf("Planned features:\n")
+		fmt.Printf("  - Node failures and restarts\n")
+		fmt.Printf("  - Network partitions and delays\n")
+		fmt.Printf("  - Resource constraints\n")
+		fmt.Printf("Usage: ./ryx-cluster -cmd chaos -type node-kill -count 3\n")
+
+	case "benchmark":
+		fmt.Printf("Performance benchmarking not yet implemented - coming in Phase 3A!\n")
+		fmt.Printf("Planned features:\n")
+		fmt.Printf("  - Diffusion speed measurement\n")
+		fmt.Printf("  - Computation throughput analysis\n")
+		fmt.Printf("  - Network performance testing\n")
+		fmt.Printf("Usage: ./ryx-cluster -cmd benchmark -type diffusion\n")
 
 	case "help":
 		cluster.PrintHelp()
@@ -123,43 +180,23 @@ func main() {
 // Start launches all nodes in the cluster
 func (c *Cluster) Start() error {
 	// Check if cluster is already running
-	if c.LoadFromPIDFile() == nil && len(c.nodes) > 0 {
+	c.nodesMx.RLock()
+	nodeCount := len(c.nodes)
+	c.nodesMx.RUnlock()
+	if c.LoadFromPIDFile() == nil && nodeCount > 0 {
 		return fmt.Errorf("cluster appears to be already running (found PID file)")
 	}
 
-	fmt.Printf("🚀 Starting %d-node ryx cluster...\n", c.config.Nodes)
+	fmt.Printf("Starting %d-node ryx cluster", c.config.Nodes)
+	if c.config.Profile != nil {
+		fmt.Printf(" (profile: %s)", c.config.Profile.Name)
+	}
+	fmt.Printf("...\n")
 
-	// Start each node
-	for i := 0; i < c.config.Nodes; i++ {
-		nodePort := c.config.BasePort + i
-		httpPort := c.config.BaseHTTPPort + i
-
-		fmt.Printf("  Starting node %d: UDP:%d HTTP:%d\n", i, nodePort, httpPort)
-
-		cmd := exec.Command(c.config.NodeBinary,
-			"--port", strconv.Itoa(nodePort),
-			"--http-port", strconv.Itoa(httpPort),
-			"--cluster-id", c.config.ClusterID,
-		)
-
-		// Start the process
-		err := cmd.Start()
-		if err != nil {
-			return fmt.Errorf("failed to start node %d: %w", i, err)
-		}
-
-		nodeInfo := &NodeInfo{
-			ID:       fmt.Sprintf("node_%d", i),
-			Port:     nodePort,
-			HTTPPort: httpPort,
-			PID:      cmd.Process.Pid,
-			Process:  cmd,
-		}
-
-		c.nodes[i] = nodeInfo
-
-		// Brief pause between starts
-		time.Sleep(100 * time.Millisecond)
+	if c.config.Parallel && c.config.Nodes > 3 {
+		return c.startNodesParallel()
+	} else {
+		return c.startNodesSequential()
 	}
 
 	c.running = true
@@ -171,8 +208,115 @@ func (c *Cluster) Start() error {
 	}
 
 	// Wait a moment for nodes to start up
-	fmt.Printf("⏳ Waiting for nodes to start up...\n")
+	fmt.Printf("Waiting for nodes to start up...\n")
 	time.Sleep(3 * time.Second)
+
+	return nil
+}
+
+// startNodesSequential starts nodes one by one (original method)
+func (c *Cluster) startNodesSequential() error {
+	// Start each node
+	for i := 0; i < c.config.Nodes; i++ {
+		err := c.startSingleNode(i)
+		if err != nil {
+			return fmt.Errorf("failed to start node %d: %w", i, err)
+		}
+		// Brief pause between starts
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	c.running = true
+	return c.saveAndWait()
+}
+
+// startNodesParallel starts nodes in parallel batches for faster large cluster startup
+func (c *Cluster) startNodesParallel() error {
+	batchSize := c.config.BatchSize
+	fmt.Printf("  Using parallel startup with batch size: %d\n", batchSize)
+
+	// Start nodes in parallel batches
+	for batchStart := 0; batchStart < c.config.Nodes; batchStart += batchSize {
+		batchEnd := batchStart + batchSize
+		if batchEnd > c.config.Nodes {
+			batchEnd = c.config.Nodes
+		}
+
+		fmt.Printf("  Starting batch %d-%d...\n", batchStart, batchEnd-1)
+
+		// Start batch in parallel
+		errChan := make(chan error, batchEnd-batchStart)
+		for i := batchStart; i < batchEnd; i++ {
+			go func(nodeID int) {
+				errChan <- c.startSingleNode(nodeID)
+			}(i)
+		}
+
+		// Wait for batch to complete
+		for i := batchStart; i < batchEnd; i++ {
+			if err := <-errChan; err != nil {
+				return fmt.Errorf("failed to start node in batch: %w", err)
+			}
+		}
+
+		// Brief pause between batches
+		if batchEnd < c.config.Nodes {
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+
+	c.running = true
+	return c.saveAndWait()
+}
+
+// startSingleNode starts a single node with the given ID
+func (c *Cluster) startSingleNode(nodeID int) error {
+	nodePort := c.config.BasePort + nodeID
+	httpPort := c.config.BaseHTTPPort + nodeID
+
+	fmt.Printf("  Starting node %d: UDP:%d HTTP:%d\n", nodeID, nodePort, httpPort)
+
+	cmd := exec.Command(c.config.NodeBinary,
+		"--port", strconv.Itoa(nodePort),
+		"--http-port", strconv.Itoa(httpPort),
+		"--cluster-id", c.config.ClusterID,
+	)
+
+	// Start the process
+	err := cmd.Start()
+	if err != nil {
+		return fmt.Errorf("failed to start node %d: %w", nodeID, err)
+	}
+
+	nodeInfo := &NodeInfo{
+		ID:       fmt.Sprintf("node_%d", nodeID),
+		Port:     nodePort,
+		HTTPPort: httpPort,
+		PID:      cmd.Process.Pid,
+		Process:  cmd,
+	}
+
+	c.nodesMx.Lock()
+	c.nodes[nodeID] = nodeInfo
+	c.nodesMx.Unlock()
+	return nil
+}
+
+// saveAndWait saves PID file and waits for node startup
+func (c *Cluster) saveAndWait() error {
+	// Save PID file
+	err := c.SavePIDFile()
+	if err != nil {
+		log.Printf("Warning: failed to save PID file: %v", err)
+	}
+
+	// Wait a moment for nodes to start up
+	fmt.Printf("Waiting for nodes to start up...\n")
+	startupTime := 3 * time.Second
+	if c.config.Nodes > 20 {
+		startupTime = 5 * time.Second // More time for large clusters
+	}
+	time.Sleep(startupTime)
 
 	return nil
 }
@@ -185,10 +329,18 @@ func (c *Cluster) Stop() error {
 		return fmt.Errorf("no cluster found (PID file missing or invalid)")
 	}
 
-	fmt.Printf("🛑 Stopping %d nodes...\n", len(c.nodes))
+	c.nodesMx.RLock()
+	nodeCount := len(c.nodes)
+	nodesCopy := make(map[int]*NodeInfo)
+	for k, v := range c.nodes {
+		nodesCopy[k] = v
+	}
+	c.nodesMx.RUnlock()
+
+	fmt.Printf("Stopping %d nodes...\n", nodeCount)
 
 	// Stop each node
-	for i, nodeInfo := range c.nodes {
+	for i, nodeInfo := range nodesCopy {
 		fmt.Printf("  Stopping node %d (PID: %d)\n", i, nodeInfo.PID)
 
 		if nodeInfo.Process != nil {
@@ -220,7 +372,9 @@ func (c *Cluster) Stop() error {
 
 	// Remove PID file
 	os.Remove(c.config.PIDFile)
+	c.nodesMx.Lock()
 	c.nodes = make(map[int]*NodeInfo)
+	c.nodesMx.Unlock()
 	c.running = false
 
 	return nil
@@ -228,14 +382,17 @@ func (c *Cluster) Stop() error {
 
 // PrintStatus shows basic cluster status
 func (c *Cluster) PrintStatus() {
-	fmt.Printf("\n📊 Cluster Status:\n")
-	fmt.Printf("  Nodes: %d\n", len(c.nodes))
+	fmt.Printf("\nCluster Status:\n")
+	c.nodesMx.RLock()
+	nodeCount := len(c.nodes)
+	c.nodesMx.RUnlock()
+	fmt.Printf("  Nodes: %d\n", nodeCount)
 	fmt.Printf("  Cluster ID: %s\n", c.config.ClusterID)
 	fmt.Printf("  Port range: %d-%d (UDP), %d-%d (HTTP)\n",
 		c.config.BasePort, c.config.BasePort+c.config.Nodes-1,
 		c.config.BaseHTTPPort, c.config.BaseHTTPPort+c.config.Nodes-1)
 
-	fmt.Printf("\n💡 Next steps:\n")
+	fmt.Printf("\nNext steps:\n")
 	fmt.Printf("  ./ryx-cluster -cmd status     # Detailed status\n")
 	fmt.Printf("  ./ryx-cluster -cmd inject     # Inject test information\n")
 	fmt.Printf("  ./ryx-cluster -cmd stop       # Stop cluster\n")
@@ -244,19 +401,28 @@ func (c *Cluster) PrintStatus() {
 
 // PrintDetailedStatus shows detailed status of all nodes
 func (c *Cluster) PrintDetailedStatus() {
-	fmt.Printf("\n📊 Detailed Cluster Status:\n")
-	fmt.Printf("  Total nodes: %d\n", len(c.nodes))
+	fmt.Printf("\nDetailed Cluster Status:\n")
+
+	c.nodesMx.RLock()
+	nodeCount := len(c.nodes)
+	nodesCopy := make(map[int]*NodeInfo)
+	for k, v := range c.nodes {
+		nodesCopy[k] = v
+	}
+	c.nodesMx.RUnlock()
+
+	fmt.Printf("  Total nodes: %d\n", nodeCount)
 
 	var totalNeighbors, totalMessages int
 
-	for i, nodeInfo := range c.nodes {
+	for i, nodeInfo := range nodesCopy {
 		fmt.Printf("\n  Node %d (PID: %d):\n", i, nodeInfo.PID)
 		fmt.Printf("    UDP: %d, HTTP: %d\n", nodeInfo.Port, nodeInfo.HTTPPort)
 
 		// Get node status via HTTP API
 		status, err := c.getNodeStatus(nodeInfo.HTTPPort)
 		if err != nil {
-			fmt.Printf("    Status: ❌ Error - %v\n", err)
+			fmt.Printf("    Status: ERROR - %v\n", err)
 			continue
 		}
 
@@ -276,26 +442,29 @@ func (c *Cluster) PrintDetailedStatus() {
 			}
 		}
 
-		fmt.Printf("    Status: ✅ Running\n")
+		fmt.Printf("    Status: RUNNING\n")
 		fmt.Printf("    Neighbors: %d\n", neighbors)
 		fmt.Printf("    Messages: %d\n", messages)
 	}
 
-	fmt.Printf("\n📈 Summary:\n")
-	fmt.Printf("  Average neighbors per node: %.1f\n", float64(totalNeighbors)/float64(len(c.nodes)))
+	fmt.Printf("\nSummary:\n")
+	fmt.Printf("  Average neighbors per node: %.1f\n", float64(totalNeighbors)/float64(nodeCount))
 	fmt.Printf("  Total information messages: %d\n", totalMessages)
 	fmt.Printf("\n")
 }
 
 // InjectInformation injects information into a specific node
 func (c *Cluster) InjectInformation(content string, energy, ttl, targetNode int) error {
-	if targetNode >= len(c.nodes) {
-		return fmt.Errorf("node %d does not exist (cluster has %d nodes)", targetNode, len(c.nodes))
+	c.nodesMx.RLock()
+	nodeCount := len(c.nodes)
+	if targetNode >= nodeCount {
+		c.nodesMx.RUnlock()
+		return fmt.Errorf("node %d does not exist (cluster has %d nodes)", targetNode, nodeCount)
 	}
-
 	nodeInfo := c.nodes[targetNode]
+	c.nodesMx.RUnlock()
 
-	fmt.Printf("💉 Injecting information into node %d...\n", targetNode)
+	fmt.Printf("Injecting information into node %d...\n", targetNode)
 	fmt.Printf("  Content: %s\n", content)
 	fmt.Printf("  Energy: %d\n", energy)
 	fmt.Printf("  TTL: %d seconds\n", ttl)
@@ -324,17 +493,25 @@ func (c *Cluster) InjectInformation(content string, energy, ttl, targetNode int)
 		return fmt.Errorf("injection request failed with status: %s", resp.Status)
 	}
 
-	fmt.Printf("✅ Information injected successfully!\n")
+	fmt.Printf("Information injected successfully!\n")
 
 	// Wait a moment and show the diffusion progress
-	fmt.Printf("⏳ Waiting for diffusion...\n")
+	fmt.Printf("Waiting for diffusion...\n")
 	time.Sleep(2 * time.Second)
 
-	fmt.Printf("\n📊 Diffusion status:\n")
-	for i, node := range c.nodes {
+	fmt.Printf("\nDiffusion status:\n")
+
+	c.nodesMx.RLock()
+	nodesCopy2 := make(map[int]*NodeInfo)
+	for k, v := range c.nodes {
+		nodesCopy2[k] = v
+	}
+	c.nodesMx.RUnlock()
+
+	for i, node := range nodesCopy2 {
 		info, err := c.getNodeInfo(node.HTTPPort)
 		if err != nil {
-			fmt.Printf("  Node %d: ❌ Error getting info\n", i)
+			fmt.Printf("  Node %d: ERROR getting info\n", i)
 			continue
 		}
 
@@ -344,9 +521,9 @@ func (c *Cluster) InjectInformation(content string, energy, ttl, targetNode int)
 		}
 
 		if count > 0 {
-			fmt.Printf("  Node %d: ✅ Has %d messages\n", i, count)
+			fmt.Printf("  Node %d: Has %d messages\n", i, count)
 		} else {
-			fmt.Printf("  Node %d: ⏳ No messages yet\n", i)
+			fmt.Printf("  Node %d: No messages yet\n", i)
 		}
 	}
 
@@ -388,6 +565,8 @@ func (c *Cluster) SavePIDFile() error {
 
 	// Convert NodeInfo to SerializableNodeInfo
 	serializableNodes := make(map[string]SerializableNodeInfo)
+
+	c.nodesMx.RLock()
 	for i, node := range c.nodes {
 		serializableNodes[fmt.Sprintf("%d", i)] = SerializableNodeInfo{
 			ID:       node.ID,
@@ -396,6 +575,7 @@ func (c *Cluster) SavePIDFile() error {
 			PID:      node.PID,
 		}
 	}
+	c.nodesMx.RUnlock()
 	data["nodes"] = serializableNodes
 
 	jsonData, err := json.MarshalIndent(data, "", "  ")
@@ -431,7 +611,9 @@ func (c *Cluster) LoadFromPIDFile() error {
 					PID:      int(nodeMap["pid"].(float64)),
 					Process:  nil, // Process is not serialized, will be nil on load
 				}
+				c.nodesMx.Lock()
 				c.nodes[nodeIndex] = nodeInfo
+				c.nodesMx.Unlock()
 			}
 		}
 	}
@@ -442,17 +624,22 @@ func (c *Cluster) LoadFromPIDFile() error {
 // PrintHelp shows usage information
 func (c *Cluster) PrintHelp() {
 	fmt.Printf(`
-🚀 ryx-cluster - Local cluster management for ryx distributed computing
+ryx-cluster - Local cluster management for ryx distributed computing
 
 COMMANDS:
-  start    Start a local cluster
-  stop     Stop the running cluster  
-  status   Show detailed cluster status
-  inject   Inject information into the cluster
-  help     Show this help
+  start      Start a local cluster
+  stop       Stop the running cluster  
+  status     Show detailed cluster status
+  inject     Inject information into the cluster
+  chaos      Chaos engineering (Phase 3A - coming soon)
+  benchmark  Performance benchmarking (Phase 3A - coming soon)
+  help       Show this help
 
 FLAGS:
   -nodes N              Number of nodes (default: 3)
+  -profile STRING       Cluster profile: small, medium, large, huge
+  -batch-size N         Parallel startup batch size (default: 10)
+  -parallel             Use parallel node operations (default: true)
   -base-port N          Base UDP port (default: 9010)  
   -base-http-port N     Base HTTP port (default: 8010)
   -cluster-id STRING    Cluster identifier (default: "test")
@@ -466,6 +653,15 @@ EXAMPLES:
   BASIC USAGE:
   # Start a 5-node cluster
   ./ryx-cluster -cmd start -nodes 5
+
+  # Use predefined cluster profiles (Phase 3A)
+  ./ryx-cluster -cmd start -profile small    # 5 nodes, optimized for basic testing
+  ./ryx-cluster -cmd start -profile medium   # 15 nodes, moderate resources
+  ./ryx-cluster -cmd start -profile large    # 30 nodes, heavy testing
+  ./ryx-cluster -cmd start -profile huge     # 50 nodes, maximum scale
+
+  # Large cluster with custom parallel settings
+  ./ryx-cluster -cmd start -nodes 25 -batch-size 8 -parallel
 
   # Show detailed status (neighbors, message counts)
   ./ryx-cluster -cmd status
