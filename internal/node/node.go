@@ -12,6 +12,7 @@ import (
 	"github.com/BasicAcid/ryx/internal/api"
 	"github.com/BasicAcid/ryx/internal/communication"
 	"github.com/BasicAcid/ryx/internal/computation"
+	"github.com/BasicAcid/ryx/internal/config"
 	"github.com/BasicAcid/ryx/internal/diffusion"
 	"github.com/BasicAcid/ryx/internal/discovery"
 )
@@ -33,43 +34,54 @@ type Node struct {
 	diffusion   *diffusion.Service
 	computation *computation.Service
 	api         *api.Server
-	mu          sync.RWMutex
-	running     bool
+
+	// Self-modification components
+	runtimeParams *config.RuntimeParameters
+	behaviorMod   config.BehaviorModifier
+
+	mu      sync.RWMutex
+	running bool
 }
 
 // New creates a new node instance
-func New(config *Config) (*Node, error) {
+func New(cfg *Config) (*Node, error) {
 	// Generate node ID if not provided
-	nodeID := config.NodeID
+	nodeID := cfg.NodeID
 	if nodeID == "" {
 		nodeID = generateNodeID()
 	}
 
+	// Initialize runtime parameters and behavior modifier
+	runtimeParams := config.GetDefaults()
+	behaviorMod := config.NewAdaptiveBehaviorModifier(runtimeParams)
+
 	node := &Node{
-		id:     nodeID,
-		config: config,
+		id:            nodeID,
+		config:        cfg,
+		runtimeParams: runtimeParams,
+		behaviorMod:   behaviorMod,
 	}
 
 	// Initialize services
 	var err error
 
-	node.discovery, err = discovery.New(config.Port, config.ClusterID, nodeID)
+	node.discovery, err = discovery.New(cfg.Port, cfg.ClusterID, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discovery service: %w", err)
 	}
 
-	node.comm, err = communication.New(config.Port, nodeID)
+	node.comm, err = communication.New(cfg.Port, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create communication service: %w", err)
 	}
 
-	// Initialize diffusion service
-	node.diffusion = diffusion.New(nodeID)
+	// Initialize diffusion service with configuration
+	node.diffusion = diffusion.NewWithConfig(nodeID, runtimeParams, behaviorMod)
 
 	// Initialize computation service
 	node.computation = computation.New(nodeID)
 
-	node.api, err = api.New(config.HTTPPort, node)
+	node.api, err = api.New(cfg.HTTPPort, node)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API server: %w", err)
 	}
@@ -205,6 +217,37 @@ func (n *Node) GetDiffusionService() *diffusion.Service {
 // GetComputationService returns the computation service for API access
 func (n *Node) GetComputationService() *computation.Service {
 	return n.computation
+}
+
+// GetRuntimeParameters returns the runtime parameters for API access
+func (n *Node) GetRuntimeParameters() *config.RuntimeParameters {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.runtimeParams
+}
+
+// GetBehaviorModifier returns the behavior modifier for API access
+func (n *Node) GetBehaviorModifier() config.BehaviorModifier {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.behaviorMod
+}
+
+// UpdateParameters updates multiple runtime parameters atomically
+func (n *Node) UpdateParameters(updates map[string]interface{}) map[string]bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.runtimeParams == nil {
+		// Return all failures if parameters not available
+		results := make(map[string]bool)
+		for param := range updates {
+			results[param] = false
+		}
+		return results
+	}
+
+	return n.runtimeParams.UpdateBatch(updates)
 }
 
 // generateNodeID creates a random node identifier

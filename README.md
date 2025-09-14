@@ -30,6 +30,14 @@ A practical implementation of Dave Ackley's robust-first distributed computing m
 - **Automatic consensus**: Identical results achieve consensus through content-addressable storage
 - **Result aggregation**: Query computation results across the network
 
+### Phase 2 Enhancement: Self-Modification (Complete)
+- **Runtime parameter system**: 20+ configurable system parameters for autonomous adaptation
+- **Message-type aware behavior**: Critical messages live 3× longer, routine messages 2× shorter
+- **Behavior modification API**: HTTP endpoints for runtime system configuration and tuning
+- **Adaptive algorithms**: Performance tracking and learning hooks for autonomous optimization
+- **Thread-safe modification**: Concurrent parameter updates with mutex protection
+- **Mission-critical foundation**: Self-modification capabilities for decades-long autonomous operation
+
 ## Quick Start
 
 ### Automated Cluster Testing
@@ -49,6 +57,17 @@ go build -o ryx-cluster ./cmd/ryx-cluster
 curl -X POST localhost:8010/compute \
   -H "Content-Type: application/json" \
   -d '{"type":"wordcount","data":"distributed computing with ryx","energy":2}'
+
+# Test self-modification: Critical vs routine messages (Phase 2 Enhancement)
+curl -X POST localhost:8010/inject -H "Content-Type: application/json" \
+  -d '{"type":"critical","content":"Emergency alert","energy":5,"ttl":3600}'
+curl -X POST localhost:8010/inject -H "Content-Type: application/json" \
+  -d '{"type":"routine","content":"Status update","energy":5,"ttl":3600}'
+
+# Runtime system configuration (Phase 2 Enhancement)  
+curl -X GET localhost:8010/config                    # View all parameters
+curl -X PUT localhost:8010/config/energy_decay_rate -H "Content-Type: application/json" \
+  -d '{"value": 0.5}'                                # Modify energy decay
 
 # Check cluster status and results
 ./ryx-cluster -cmd status

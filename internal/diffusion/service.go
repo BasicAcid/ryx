@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BasicAcid/ryx/internal/config"
 	"github.com/BasicAcid/ryx/internal/types"
 )
 
@@ -21,6 +22,11 @@ type Service struct {
 	comm        types.CommunicationService
 	disc        types.DiscoveryService
 	computation types.ComputationService
+
+	// Configuration and behavior modification
+	runtimeParams *config.RuntimeParameters
+	behaviorMod   config.BehaviorModifier
+	cleanupTicker *time.Ticker
 }
 
 // New creates a new diffusion service
@@ -29,6 +35,17 @@ func New(nodeID string) *Service {
 	return &Service{
 		nodeID:  nodeID,
 		storage: make(map[string]*types.InfoMessage),
+	}
+}
+
+// NewWithConfig creates a new diffusion service with runtime configuration
+func NewWithConfig(nodeID string, params *config.RuntimeParameters, behaviorMod config.BehaviorModifier) *Service {
+	log.Printf("Creating new diffusion service for node %s with configurable behavior", nodeID)
+	return &Service{
+		nodeID:        nodeID,
+		storage:       make(map[string]*types.InfoMessage),
+		runtimeParams: params,
+		behaviorMod:   behaviorMod,
 	}
 }
 
@@ -55,6 +72,12 @@ func (s *Service) Stop() {
 func (s *Service) InjectInfo(infoType string, content []byte, energy int, ttl time.Duration) (*types.InfoMessage, error) {
 	log.Printf("InjectInfo called: type=%s, content_len=%d, energy=%d, ttl=%v", infoType, len(content), energy, ttl)
 
+	// Apply behavior modifier to TTL if available
+	adjustedTTL := ttl
+	if s.behaviorMod != nil {
+		adjustedTTL = s.behaviorMod.ModifyTTL(infoType, ttl)
+	}
+
 	// Create content ID
 	id := generateInfoID(content)
 	log.Printf("Generated ID: %s", id)
@@ -74,7 +97,7 @@ func (s *Service) InjectInfo(infoType string, content []byte, energy int, ttl ti
 		Type:      infoType,
 		Content:   content,
 		Energy:    energy,
-		TTL:       time.Now().Add(ttl).Unix(),
+		TTL:       time.Now().Add(adjustedTTL).Unix(),
 		Hops:      0,
 		Source:    s.nodeID,
 		Path:      []string{s.nodeID},
@@ -182,16 +205,34 @@ func (s *Service) GetStats() map[string]interface{} {
 
 // cleanupLoop removes expired messages
 func (s *Service) cleanupLoop() {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	// Use configurable cleanup interval or default
+	cleanupInterval := 30 * time.Second
+	if s.runtimeParams != nil {
+		cleanupInterval = time.Duration(s.runtimeParams.GetInt("cleanup_interval_seconds", 30)) * time.Second
+	}
+
+	s.cleanupTicker = time.NewTicker(cleanupInterval)
+	defer s.cleanupTicker.Stop()
 
 	for {
 		select {
 		case <-s.ctx.Done():
 			log.Printf("Cleanup loop stopping for node %s", s.nodeID)
 			return
-		case <-ticker.C:
+		case <-s.cleanupTicker.C:
 			s.cleanup()
+
+			// Adaptive cleanup interval based on system load
+			if s.behaviorMod != nil {
+				// Placeholder for system load - in real implementation would get actual metrics
+				systemLoad := 0.5 // TODO: Get real system load
+				newInterval := s.behaviorMod.ModifyCleanupInterval(cleanupInterval, systemLoad)
+				if newInterval != cleanupInterval {
+					log.Printf("Adapting cleanup interval from %v to %v", cleanupInterval, newInterval)
+					s.cleanupTicker.Reset(newInterval)
+					cleanupInterval = newInterval
+				}
+			}
 		}
 	}
 }
@@ -202,9 +243,22 @@ func (s *Service) cleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Placeholder for system memory usage - in real implementation would get actual metrics
+	systemMemoryUsage := 0.5 // TODO: Get real memory usage metrics
+
 	removed := 0
 	for id, info := range s.storage {
-		if info.TTL < now {
+		shouldCleanup := false
+
+		if s.behaviorMod != nil {
+			// Use behavior modifier for cleanup decisions
+			shouldCleanup = s.behaviorMod.ShouldCleanupMessage(info, systemMemoryUsage)
+		} else {
+			// Default behavior: cleanup expired messages
+			shouldCleanup = info.TTL < now
+		}
+
+		if shouldCleanup {
 			delete(s.storage, id)
 			removed++
 		}
@@ -241,15 +295,26 @@ func (s *Service) forwardToNeighbors(msg *types.InfoMessage) {
 	log.Printf("forwardToNeighbors: found %d neighbors", len(neighbors))
 
 	for _, neighbor := range neighbors {
+		// Check basic forwarding rules first
 		if s.shouldForward(msg, neighbor.NodeID) {
-			// Create a forwarded copy with updated energy and path
-			forwardedMsg := s.createForwardedMessage(msg, neighbor.NodeID)
-			log.Printf("Forwarding message %s to %s (energy: %d→%d, hops: %d→%d)",
-				msg.ID, neighbor.NodeID, msg.Energy, forwardedMsg.Energy, msg.Hops, forwardedMsg.Hops)
+			// Apply behavior modifier for advanced forwarding decisions
+			shouldForwardToNeighbor := true
+			if s.behaviorMod != nil {
+				shouldForwardToNeighbor = s.behaviorMod.ModifyForwardingDecision(msg, neighbor)
+			}
 
-			err := s.comm.SendInfoMessage(neighbor.NodeID, neighbor.Address, neighbor.Port, forwardedMsg)
-			if err != nil {
-				log.Printf("Failed to forward message to %s: %v", neighbor.NodeID, err)
+			if shouldForwardToNeighbor {
+				// Create a forwarded copy with updated energy and path
+				forwardedMsg := s.createForwardedMessage(msg, neighbor.NodeID)
+				log.Printf("Forwarding message %s to %s (energy: %d→%d, hops: %d→%d)",
+					msg.ID, neighbor.NodeID, msg.Energy, forwardedMsg.Energy, msg.Hops, forwardedMsg.Hops)
+
+				err := s.comm.SendInfoMessage(neighbor.NodeID, neighbor.Address, neighbor.Port, forwardedMsg)
+				if err != nil {
+					log.Printf("Failed to forward message to %s: %v", neighbor.NodeID, err)
+				}
+			} else {
+				log.Printf("Not forwarding message %s to %s (behavior modifier decision)", msg.ID, neighbor.NodeID)
 			}
 		} else {
 			log.Printf("Not forwarding message %s to %s (loop prevention or energy exhausted)", msg.ID, neighbor.NodeID)
@@ -281,12 +346,19 @@ func (s *Service) shouldForward(msg *types.InfoMessage, targetNodeID string) boo
 
 // createForwardedMessage creates a new message for forwarding with updated energy and path
 func (s *Service) createForwardedMessage(original *types.InfoMessage, targetNodeID string) *types.InfoMessage {
-	// Create a deep copy
+	// Calculate energy decay using behavior modifier
+	defaultDecay := 1.0
+	energyDecay := defaultDecay
+	if s.behaviorMod != nil {
+		energyDecay = s.behaviorMod.ModifyEnergyDecay(original, defaultDecay)
+	}
+
+	// Create a deep copy with adaptive energy decay
 	forwarded := &types.InfoMessage{
 		ID:        original.ID,
 		Type:      original.Type,
 		Content:   original.Content,
-		Energy:    original.Energy - 1, // Decrease energy
+		Energy:    int(float64(original.Energy) - energyDecay), // Configurable energy decay
 		TTL:       original.TTL,
 		Hops:      original.Hops + 1, // Increase hop count
 		Source:    original.Source,   // Keep original source

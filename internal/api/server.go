@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/BasicAcid/ryx/internal/computation"
+	"github.com/BasicAcid/ryx/internal/config"
 	"github.com/BasicAcid/ryx/internal/diffusion"
 	"github.com/BasicAcid/ryx/internal/types"
 )
@@ -30,11 +31,19 @@ type ComputationProvider interface {
 	GetComputationService() *computation.Service
 }
 
+// ConfigurationProvider interface for runtime parameter modification
+type ConfigurationProvider interface {
+	GetRuntimeParameters() *config.RuntimeParameters
+	GetBehaviorModifier() config.BehaviorModifier
+	UpdateParameters(updates map[string]interface{}) map[string]bool
+}
+
 // NodeProvider combines all interfaces
 type NodeProvider interface {
 	NodeStatusProvider
 	DiffusionProvider
 	ComputationProvider
+	ConfigurationProvider
 }
 
 // Server provides HTTP API for node control and status
@@ -69,6 +78,10 @@ func (s *Server) Start(ctx context.Context) error {
 	// Computation endpoints (Phase 2C)
 	mux.HandleFunc("/compute", s.handleCompute)
 	mux.HandleFunc("/compute/", s.handleComputeByID)
+
+	// Configuration endpoints (Phase 3B - Self-modification)
+	mux.HandleFunc("/config", s.handleConfig)
+	mux.HandleFunc("/config/", s.handleConfigParameter)
 
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
@@ -472,6 +485,123 @@ func (s *Server) writeJSON(w http.ResponseWriter, data interface{}) {
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		log.Printf("Failed to encode JSON response: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+// handleConfig handles configuration requests (GET all params, POST to update multiple)
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.handleConfigGet(w, r)
+	case http.MethodPost:
+		s.handleConfigUpdate(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleConfigGet returns current configuration parameters
+func (s *Server) handleConfigGet(w http.ResponseWriter, r *http.Request) {
+	params := s.node.GetRuntimeParameters()
+	if params == nil {
+		http.Error(w, "Configuration not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"parameters": map[string]interface{}{
+			"energy_decay_rate":        params.EnergyDecayRate,
+			"energy_decay_critical":    params.EnergyDecayCritical,
+			"energy_decay_routine":     params.EnergyDecayRoutine,
+			"default_energy_info":      params.DefaultEnergyInfo,
+			"default_energy_compute":   params.DefaultEnergyCompute,
+			"default_ttl_seconds":      params.DefaultTTLSeconds,
+			"cleanup_interval_seconds": params.CleanupIntervalSeconds,
+			"max_neighbors":            params.MaxNeighbors,
+			"min_neighbors":            params.MinNeighbors,
+			"adaptation_enabled":       params.AdaptationEnabled,
+			"learning_rate":            params.LearningRate,
+		},
+	}
+
+	s.writeJSON(w, response)
+}
+
+// handleConfigUpdate updates configuration parameters
+func (s *Server) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
+	var request map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	results := s.node.UpdateParameters(request)
+
+	response := map[string]interface{}{
+		"success": true,
+		"results": results,
+		"message": "Parameters updated",
+	}
+
+	s.writeJSON(w, response)
+}
+
+// handleConfigParameter handles individual parameter requests
+func (s *Server) handleConfigParameter(w http.ResponseWriter, r *http.Request) {
+	// Extract parameter name from URL path
+	path := strings.TrimPrefix(r.URL.Path, "/config/")
+	if path == "" {
+		http.Error(w, "Parameter name required", http.StatusBadRequest)
+		return
+	}
+
+	params := s.node.GetRuntimeParameters()
+	if params == nil {
+		http.Error(w, "Configuration not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		value := params.Get(path)
+		if value == nil {
+			http.Error(w, "Parameter not found", http.StatusNotFound)
+			return
+		}
+
+		response := map[string]interface{}{
+			"success":   true,
+			"parameter": path,
+			"value":     value,
+		}
+		s.writeJSON(w, response)
+
+	case http.MethodPut:
+		var request struct {
+			Value interface{} `json:"value"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		success := params.Set(path, request.Value)
+		if !success {
+			http.Error(w, "Failed to set parameter", http.StatusBadRequest)
+			return
+		}
+
+		response := map[string]interface{}{
+			"success":   true,
+			"parameter": path,
+			"value":     request.Value,
+			"message":   "Parameter updated successfully",
+		}
+		s.writeJSON(w, response)
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
