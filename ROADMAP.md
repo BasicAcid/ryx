@@ -2,27 +2,42 @@
 
 ## Vision
 
-Build a practical implementation of Dave Ackley's robust-first distributed computing model that demonstrates:
+Build the most robust distributed computing system ever created - one capable of powering mission-critical systems that must operate for decades without human intervention, from spaceship life support systems to autonomous infrastructure.
 
-- **Effortless horizontal scaling** (add nodes without configuration changes)
-- **Bulletproof fault tolerance** (graceful degradation, no single points of failure)
-- **Distributed computation** (real work spreading through energy-based diffusion)
-- **Production readiness** (single binary deployable to any Linux environment)
+**Core Mission**: Implement Dave Ackley's robust-first distributed computing model for systems where failure is not an option.
+
+**Target Applications**:
+- **Spaceship core systems**: Life support, navigation, propulsion control for multi-year missions
+- **Autonomous infrastructure**: Self-managing smart cities, industrial control, power grids
+- **Critical cloud computing**: Always-available distributed systems with automatic healing
+- **Home/edge computing**: Reliable automation that works even when disconnected
+
+**System Characteristics**:
+- **Effortless horizontal scaling** (add/remove nodes during operation without downtime)
+- **Bulletproof fault tolerance** (automatic healing, no single points of failure)
+- **Self-modification** (system adapts and improves autonomously over time)
+- **Physical-aware computing** (understands and responds to real-world constraints)
+- **Mission-duration reliability** (decades of operation with minimal maintenance)
 
 ## Core Principles
 
-### Ackley's Robust Computing Model
-- **Local-only communication**: Each node talks only to immediate neighbors
-- **Energy-based diffusion**: Information and computation spread with decay
-- **No global coordination**: System self-organizes through local interactions
-- **Automatic fault tolerance**: Work routes around failures naturally
-- **Spatial computing**: Computation happens where data lives
+### Ackley's Robust Computing Model (Enhanced for Critical Systems)
+- **Local-only communication**: Each node talks only to immediate neighbors (physical + logical)
+- **Energy-based diffusion**: Information and computation spread with decay and priority
+- **No global coordination**: System self-organizes through local interactions and chemistry
+- **Automatic fault tolerance**: Work routes around failures with self-healing responses
+- **Spatial-physical computing**: Computation considers physical location and fault boundaries
+- **Chemistry-based reactions**: Messages combine, transform, and catalyze like chemical processes
+- **Self-modification**: System adapts behavior, topology, and algorithms autonomously
 
-### Architecture Philosophy
-- **Logical topology**: Neighbors based on network reachability, not physical layout
+### Architecture Philosophy for Mission-Critical Systems
+- **Hybrid spatial-logical topology**: Physical proximity for fault isolation, logical for efficiency
+- **Physical fault boundaries**: Failures contained by real-world physical barriers
 - **Distributed everything**: No central coordinators, masters, or single points of failure
-- **Same code everywhere**: One binary works locally or across data centers
-- **Optional control plane**: Management APIs embedded in each node, not separate service
+- **Same code everywhere**: One binary works from Mars rovers to Earth data centers
+- **Autonomous operation**: System operates for years without human intervention
+- **Hot-swap everything**: Components added/removed during operation without downtime
+- **Mission-duration thinking**: Design for decades of continuous operation
 
 ## System Components
 
@@ -128,10 +143,12 @@ ryx-cluster chaos --kill 30%     # Test fault tolerance
 
 **Results**: Computational tasks spread through network energy-based diffusion, execute locally on each node, and achieve automatic consensus through identical result deduplication
 
-### Phase 3: Advanced Development Tooling ⏳ IN PROGRESS
-**Goal**: Transform `ryx-cluster` into a sophisticated development and testing platform
+### Phase 3: Mission-Critical Foundations ⏳ IN PROGRESS
+**Goal**: Transform the system from development platform to mission-critical infrastructure
 
-**Current Foundation**: Large-scale cluster management operational with up to 50+ nodes, parallel startup, and race condition-free operations
+**Current Foundation**: Large-scale cluster management operational with 50+ nodes, but lacking critical system capabilities
+
+**Architecture Decision**: Based on spaceship core system requirements, we must enhance the system with spatial awareness, chemistry-based computing, self-modification, and continuous energy control for true mission-critical reliability.
 
 #### Phase 3A: Enhanced Cluster Management ✅ COMPLETE
 **Goal**: Large-scale cluster simulation and resilience testing
@@ -142,77 +159,110 @@ ryx-cluster chaos --kill 30%     # Test fault tolerance
 - Cluster profiles (small/medium/large/huge) with optimized settings ✅
 - Race condition fixes for concurrent map operations ✅
 - Performance validation: 32% faster startup with parallel operations ✅
-- Advanced chaos engineering (node failures, network partitions, resource constraints) ⏳ PLANNED
-- Performance benchmarking framework (diffusion speed, computation throughput) ⏳ PLANNED
-- Automated testing scenarios with JSON/YAML test definitions ⏳ PLANNED
 
-#### Phase 3B: Visualization and Monitoring ⏳ PLANNED
-**Goal**: Comprehensive system observability and visualization
+**Status**: Provides foundation for mission-critical testing, but needs enhancement for physical systems
 
-**Key deliverables**:
-- Real-time network topology visualization (terminal and web-based)
-- Advanced metrics collection (network, computation, cluster health)
-- Historical data analysis and alerting
-- Interactive dashboards for cluster monitoring
-- Export capabilities for network topology and performance reports
+#### Phase 3B: Self-Modification Core ⏳ NEXT (MISSION CRITICAL)
+**Goal**: Enable autonomous system adaptation and learning for decades-long operation
 
-#### Phase 3C: Advanced Computation Management ⏳ PLANNED  
-**Goal**: Sophisticated distributed computation orchestration
+**Why Critical**: Spaceship systems must adapt to unpredictable failures and changing conditions without ground control
 
 **Key deliverables**:
-- Enhanced computation orchestration and task queuing
-- Advanced result aggregation for non-deterministic tasks
-- Multi-stage computation pipelines
-- Real-time computation progress tracking across cluster
-- Integration with CI/CD pipelines for automated testing
+- Dynamic parameter tuning (energy decay, TTL, neighbor selection) based on system conditions
+- Adaptive neighbor selection with physical and network awareness
+- Automatic fault pattern learning and routing rule updates
+- Runtime behavior modification for new hardware/software integration
+- Self-optimization algorithms for topology and resource allocation
+- Hot-swap node integration without system restart
+- Mission-duration component replacement planning
 
-**Success criteria**: Can spawn 50+ node clusters, run comprehensive fault scenarios, visualize network behavior, and validate system performance at scale
+**Implementation Priority**: This enables the system to survive and thrive during long-duration missions
 
-### Phase 4: Production Readiness
-**Goal**: Multi-machine deployment and robust operation
+#### Phase 3C: Spatial-Physical Computing ⏳ PLANNED (SAFETY CRITICAL)
+**Goal**: Add physical location awareness for fault isolation and maintenance operations
 
-**Key deliverables**:
-- Seed-node based discovery for distributed deployment
-- Production-grade logging, metrics, and monitoring
-- Graceful shutdown and resource cleanup
-- Docker containerization and systemd integration
-- Network partition handling and recovery
-
-**Success criteria**: Same computation runs identically on localhost and across multiple machines
-
-### Phase 5: Control Plane and Observability
-**Goal**: `ryx-control` web dashboard and advanced monitoring
+**Why Critical**: Physical fault boundaries prevent cascading failures in critical systems
 
 **Key deliverables**:
-- Web-based network topology visualization
-- Real-time computation progress monitoring
-- Task injection and result browsing interface
-- Performance metrics and alerting
-- Energy flow and diffusion pattern visualization
+- Physical coordinate system for nodes (3D spatial positioning)
+- Distance-based neighbor selection with fault isolation boundaries
+- Physical topology mapping and blast radius calculation
+- Spatial redundancy planning and automatic backup node assignment
+- Maintenance zone isolation (remove nodes without affecting neighbors)
+- Cable/connection reliability modeling based on physical distance
+- Emergency physical partitioning for damage control
 
-**Success criteria**: Professional demo-ready interface showing network behavior and computation progress
+**Integration**: Hybrid spatial-logical topology for optimal performance and safety
 
-### Phase 6: Advanced Computation Models
-**Goal**: Sophisticated distributed algorithms and use cases
+### Phase 4: Chemistry-Based Computing Engine ⏳ PLANNED (RELIABILITY CRITICAL)
+**Goal**: Implement chemical reaction model for autonomous system immune responses
+
+**Why Critical**: Provides autonomous healing and optimization like biological immune systems
+
+#### Phase 4A: Message Chemistry Foundation
+**Key deliverables**:
+- Message transformation and combination rules (chemical reactions)
+- Concentration tracking for message types and error patterns
+- Gradient-based information flow (high concentration → low concentration)
+- Catalytic node types that accelerate specific computations
+- Chemical equilibrium for system stability and load balancing
+
+#### Phase 4B: Immune System Behaviors
+**Key deliverables**:
+- Automatic threat detection and response through chemical concentration
+- Error pattern recognition and antibody-like diagnostic task spawning
+- System homeostasis maintenance through chemical feedback loops
+- Resource reallocation based on chemical gradients and concentration
+- Graceful degradation through chemical priority systems
+
+### Phase 5: Continuous Energy and Precision Control ⏳ PLANNED
+**Goal**: Replace discrete energy with continuous control for fine-grained system management
+
+**Why Important**: Critical systems need precise priority control and graceful quality degradation
 
 **Key deliverables**:
-- Distributed consensus algorithms through local interactions
-- Complex data processing pipelines (ETL, stream processing)
-- Distributed machine learning (parameter diffusion, gradient aggregation)
-- Self-organizing resource allocation and load balancing
-- Adaptive topology optimization
+- Continuous energy model (float64 with configurable decay rates)
+- Priority-based energy decay (critical messages travel further)
+- Quality-of-service tiers with energy-based resource allocation
+- Network-aware energy consumption (slow links cost more energy)
+- Emergency mode operation with minimal energy for critical functions
+- Distance-proportional energy decay for spatial systems
 
-**Success criteria**: Compelling real-world use cases that showcase unique advantages
+### Phase 6: Mission-Critical Integration ⏳ PLANNED
+**Goal**: Integration features for real-world critical system deployment
 
-## Technical Architecture
+**Key deliverables**:
+- Hardware abstraction layer for sensors, actuators, and control systems
+- Multi-decade persistent storage with automatic data migration
+- Inter-planetary communication optimization (burst transmission, delay tolerance)
+- Radiation-hardened operation modes and error correction
+- Power management integration with energy-aware computation
+- Life support system integration and emergency protocols
+- Autonomous mission planning and resource allocation
 
-### Communication Model
-- **Inter-node**: UDP for neighbor communication (fast, fault-tolerant)
+### Phase 7: Advanced Observability and Control ⏳ PLANNED
+**Goal**: Professional interfaces for monitoring and controlling mission-critical systems
+
+**Key deliverables**:
+- Real-time 3D spatial network visualization
+- Chemistry reaction monitoring and concentration tracking
+- Mission timeline planning and long-term trend analysis
+- Emergency control interfaces for crisis management
+- Automated report generation for mission control
+- Fault tree analysis and failure prediction systems
+
+## Technical Architecture for Mission-Critical Systems
+
+### Communication Model (Enhanced for Physical Systems)
+- **Inter-node**: UDP for neighbor communication (fast, fault-tolerant, low latency)
 - **Control**: HTTP REST API on each node (debuggable, firewall-friendly)
-- **Data format**: JSON messages (human-readable, language-agnostic)
-- **Discovery**: UDP broadcast (local) + seed nodes (distributed)
+- **Data format**: JSON messages (human-readable, self-describing, parser-resilient)
+- **Discovery**: Hybrid spatial-logical (physical proximity + network performance)
+- **Physical awareness**: Cable length, fault isolation boundaries, blast radius
+- **Emergency protocols**: Degraded communication modes for crisis situations
 
-### Information Diffusion Model (Phase 2A/2B Complete)
+### Information Diffusion Model (Phase 2A/2B Complete, Phase 4+ Planned)
+**Current Capabilities**:
 - **Message structure**: Content-addressable with energy, TTL, and hop tracking
 - **Energy decay**: Messages lose energy as they spread, preventing infinite loops
 - **Deduplication**: Content hashing prevents duplicate processing across network
@@ -221,60 +271,116 @@ ryx-cluster chaos --kill 30%     # Test fault tolerance
 - **Loop prevention**: Path-based cycle detection stops infinite propagation
 - **TTL management**: Automatic cleanup prevents memory exhaustion
 
-### Computation Model
+**Planned Enhancements**:
+- **Chemistry-based reactions**: Messages combine, transform, and catalyze
+- **Continuous energy**: Float64 energy with priority-based decay rates
+- **Spatial diffusion**: Physical distance affects propagation patterns
+- **Concentration gradients**: Information flows from high to low concentration
+- **Emergency propagation**: Critical messages override normal energy limits
+
+### Computation Model (Enhanced for Critical Systems)
+**Current Capabilities**:
 - **Task representation**: Content-addressable with energy and metadata
 - **Execution**: Local processing with neighbor result sharing
 - **Aggregation**: Consensus through redundant computation and local voting
 - **Storage**: In-memory with automatic expiration, no persistence required
 
-### Neighbor Selection Strategy
+**Planned Enhancements**:
+- **Priority-based execution**: Critical tasks get more resources and energy
+- **Chemistry-based task fusion**: Related tasks combine for efficiency
+- **Self-modifying algorithms**: Computation strategies adapt to workload patterns
+- **Mission-critical persistence**: Long-term storage for critical system state
+- **Hardware integration**: Direct sensor/actuator control and feedback
+
+### Neighbor Selection Strategy (Hybrid Spatial-Logical)
+**Current**: Logical topology based on network reachability
 - **Target neighbors**: 4-6 per node (balance connectivity vs overhead)
 - **Selection criteria**: Network latency + random long-distance links
 - **Dynamic adaptation**: Periodic re-evaluation and optimization
 - **Failure handling**: Automatic replacement of failed neighbors
 
-### Data Management
+**Planned Enhancement**: Spatial-physical awareness
+- **Physical proximity**: Primary neighbors based on physical location
+- **Fault isolation**: Neighbor selection respects physical barriers
+- **Redundant paths**: Multiple physical routes for critical connections
+- **Maintenance zones**: Hot-swap friendly neighbor assignments
+- **Distance weighting**: Physical distance affects neighbor priority
+
+### Data Management (Multi-Tier for Mission Duration)
+**Current**: In-memory only with TTL cleanup
 - **Content addressing**: Hash-based deduplication and verification
 - **Memory bounds**: Automatic garbage collection based on age and energy
 - **Replication**: Natural through energy-based diffusion
 - **Consistency**: Eventual consistency through redundant computation
 
-## Key Use Cases and Demonstrations
+**Planned Enhancement**: Multi-decade persistence
+- **Tiered storage**: Memory → SSD → Long-term → Archive
+- **Chemistry-based retention**: Important data gets longer retention through reactions
+- **Automatic migration**: Data moves between tiers based on access patterns
+- **Mission-critical replication**: Essential data replicated across physical zones
+- **Self-healing storage**: Automatic detection and repair of data corruption
 
-### Primary: Distributed Log Analysis
-**Problem**: Analyze large distributed log files for patterns and anomalies
-**Solution**: Logs spread through network, pattern detection via local computation, results aggregate naturally
-**Benefit**: Shows real-world applicability, easy to understand and measure
+## Mission-Critical Use Cases
 
-### Secondary: Distributed Search Engine
-**Problem**: Build searchable index across distributed document corpus
-**Solution**: Documents diffuse through network, inverted indices built locally, search results ranked through consensus
-**Benefit**: Demonstrates complex coordination and data structures
+### Primary: Spaceship Life Support Management
+**Problem**: Maintain breathable atmosphere, temperature, and pressure across multiple compartments during multi-year space missions
+**Solution**: Environmental sensors feed data through spatial diffusion, chemistry-based reactions detect dangerous concentrations, self-modification adapts to changing crew needs and equipment failures
+**Critical Requirements**: Zero downtime, automatic fault isolation, decades of operation without ground support
+**Benefit**: Ultimate test of system robustness - human lives depend on it
 
-### Tertiary: Distributed Monitoring System
-**Problem**: Monitor distributed system health and detect correlated failures
-**Solution**: Metrics spread between neighbors, anomaly detection through local analysis, alerts via consensus
-**Benefit**: Shows self-monitoring distributed system (meta-level application)
+### Secondary: Autonomous Smart City Infrastructure
+**Problem**: Manage power grid, water systems, traffic, and emergency services for a city of millions
+**Solution**: Physical infrastructure nodes create spatial network, chemistry-based load balancing, self-modification optimizes for changing populations and weather patterns
+**Critical Requirements**: Real-time response, cascading failure prevention, integration with legacy systems
+**Benefit**: Demonstrates scale and complexity of real-world critical systems
 
-## Success Metrics
+### Tertiary: Industrial Process Control
+**Problem**: Control chemical plants, nuclear reactors, or manufacturing with strict safety requirements
+**Solution**: Process control nodes with physical awareness, chemical reaction modeling for process optimization, automatic safety protocol activation
+**Critical Requirements**: Millisecond response times, perfect safety record, regulatory compliance
+**Benefit**: Shows integration with existing industrial control systems
 
-### Technical Performance
-- Linear throughput scaling with node addition
-- Sub-second fault recovery and work redistribution
-- <10% performance penalty with 50% random node failures
-- Memory usage bounded regardless of network size
+### Development Use Cases (Stepping Stones)
 
-### Scalability Demonstration
-- Identical code from 5 to 500+ nodes
-- Zero configuration changes when adding nodes
-- No performance degradation with network growth
-- Same operational complexity at any scale
+#### Distributed Log Analysis (Phase 3+ Demo)
+**Problem**: Analyze system logs across large server farms for security threats and performance issues
+**Solution**: Current diffusion system enhanced with chemistry-based pattern recognition
+**Benefit**: Practical demonstration of current capabilities with clear business value
 
-### Fault Tolerance Validation
-- Graceful degradation under various failure modes
-- Automatic recovery without manual intervention
-- No single points of failure in any component
-- Network partition tolerance with eventual consistency
+#### Home Automation Network (Phase 4+ Demo)
+**Problem**: Coordinate smart home devices with reliable automation even during internet outages
+**Solution**: Physical nodes throughout house, spatial awareness for device location, chemistry-based scene optimization
+**Benefit**: Consumer-friendly demonstration of spatial computing and self-modification
+
+## Success Metrics for Mission-Critical Systems
+
+### Mission-Critical Performance (Spaceship Requirements)
+- **Zero acceptable downtime**: System continues operation through any single-point failure
+- **Decades-long operation**: Autonomous operation for 10+ years without human intervention
+- **Sub-millisecond emergency response**: Critical safety systems respond within hardware limits
+- **Perfect fault isolation**: Physical failures contained within blast radius
+- **Self-healing efficiency**: System automatically recovers from 99%+ of failure modes
+
+### Technical Performance (Scalability Requirements)
+- **Linear throughput scaling**: Performance increases proportionally with node addition
+- **Sub-second fault recovery**: Automatic rerouting and work redistribution
+- **<5% performance penalty**: System maintains efficiency with 50% random node failures
+- **Bounded resource usage**: Memory and storage stay within limits indefinitely
+- **Hot-swap capability**: Add/remove nodes during operation without performance impact
+
+### Robustness Validation (Critical System Standards)
+- **Cascading failure prevention**: No single failure brings down multiple systems
+- **Physical disaster recovery**: System survives fire, explosion, radiation, power loss
+- **Network partition tolerance**: Split networks automatically reconverge
+- **Byzantine fault tolerance**: System handles malicious or corrupted nodes
+- **Environmental adaptation**: Automatic adjustment to temperature, pressure, radiation changes
+
+### Self-Modification Success (Autonomous Operation)
+- **Adaptive optimization**: System performance improves over time without human tuning
+- **Fault learning**: New failure patterns automatically incorporated into response strategies
+- **Hardware integration**: New sensors/actuators automatically discovered and integrated
+- **Mission evolution**: System adapts to changing mission requirements and crew needs
+- **Knowledge preservation**: Critical operational knowledge survives hardware replacement cycles
 
 ## Implementation Guidelines
 
@@ -320,27 +426,54 @@ ryx-cluster chaos --kill 30%     # Test fault tolerance
 
 ---
 
-## Current Status: Phase 3A Complete
+## Implementation Strategy and Current Status
+
+### Mission-Critical Architecture Pivot
+**Architecture Decision**: After analysis of spaceship core system requirements, the roadmap has been restructured to prioritize mission-critical capabilities over development tooling. The system needs fundamental architectural enhancements to handle life-critical scenarios.
+
+### Implementation Order Rationale
+The new phase structure reflects mission-critical priorities:
+1. **Self-modification (Phase 3B)**: Most critical - enables autonomous operation for decades
+2. **Spatial computing (Phase 3C)**: Safety critical - provides physical fault isolation
+3. **Chemistry computing (Phase 4)**: Reliability critical - autonomous immune system
+4. **Continuous energy (Phase 5)**: Control precision for fine-grained management
+
+### Potential Roadmap Rollback
+**Status**: May need to revisit Phase 2 implementations to add foundational support for:
+- Spatial coordinates and physical topology (Phase 2B enhancement)
+- Self-modification hooks in core message processing (Phase 2A/2B enhancement)
+- Continuous energy fields (Phase 2B enhancement)
+
+This is acceptable and expected - building mission-critical systems requires getting the foundations right.
+
+## Current Status: Phase 3A Complete, Architecture Pivot
 
 **Completed Phases**:
 - ✅ **Phase 1**: Core `ryx-node` daemon with neighbor discovery and HTTP API
 - ✅ **Phase 2A**: Content-addressable information storage with TTL management
-- ✅ **Phase 2B**: Energy-based message propagation between neighbors  
+- ✅ **Phase 2B**: Energy-based message propagation between neighbors
 - ✅ **Phase 2C**: Distributed computation execution and result aggregation
 - ✅ **Phase 3A**: Large-scale cluster management with race condition fixes
 
-**Current Capabilities**:
+**Current Capabilities (Development-Grade)**:
 - Distributed computation across 50+ node clusters
 - Parallel node startup (32% performance improvement)
 - Race condition-free concurrent operations
 - Energy-based task diffusion with automatic consensus
 - Content-addressable storage with automatic cleanup
+- **Gap**: Not yet mission-critical grade - lacks spatial awareness, self-modification, chemistry
 
-**Next Phase: 3B/3C Development**:
-1. Advanced chaos engineering implementation
-2. Performance benchmarking framework
-3. Real-time network topology visualization
-4. Automated testing scenarios with YAML definitions
+**Next Phase: 3B Self-Modification Core (MISSION CRITICAL PRIORITY)**:
+1. **Immediate**: Dynamic parameter tuning and adaptive neighbor selection
+2. **Short-term**: Fault pattern learning and routing rule adaptation
+3. **Medium-term**: Runtime behavior modification and hardware integration
+4. **Long-term**: Mission-duration autonomous operation capabilities
+
+**Architecture Enhancement Pipeline**:
+- May enhance Phase 2B with spatial coordinates and continuous energy
+- May enhance Phase 2A/2B with self-modification hooks
+- Will add chemistry-based computing as new Phase 4
+- Focus shifted from development tooling to mission-critical robustness
 
 **Current Working Demo (Phase 3A Complete)**:
 ```bash
@@ -354,7 +487,7 @@ go build -o ryx-cluster ./cmd/ryx-cluster
 # Test distributed computation
 ./ryx-cluster -cmd inject -content "test computation" -energy 10
 
-# Monitor cluster status  
+# Monitor cluster status
 ./ryx-cluster -cmd status  # Shows all 50 nodes with distributed information
 
 # Stop cluster cleanly
