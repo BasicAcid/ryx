@@ -217,17 +217,93 @@ done
 ./ryx-cluster -cmd stop
 ```
 
-### **Test 7: Multi-Node Content Distribution**
+### **Test 7: Phase 2B Inter-Node Diffusion**
+```bash
+# Start cluster and wait for neighbor discovery
+./ryx-cluster -cmd start -nodes 3
+sleep 8
+
+# Inject message with energy on one node - should spread to all nodes
+curl -X POST http://localhost:8010/inject \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Phase 2B Test","energy":3}'
+
+# Wait for propagation
+sleep 3
+
+# Verify message reached all nodes
+echo "=== Node 0 (Original) ==="
+curl -s http://localhost:8010/info | jq '.count'  # Should be 1
+
+echo "=== Node 1 (Neighbor) ==="  
+curl -s http://localhost:8011/info | jq '.count'  # Should be 1
+
+echo "=== Node 2 (Neighbor) ==="
+curl -s http://localhost:8012/info | jq '.count'  # Should be 1
+
+# Check energy decay and path tracking
+MESSAGE_ID=$(curl -s http://localhost:8010/info | jq -r '.info | keys[0]')
+
+echo "=== Energy Decay Analysis ==="
+echo "Original node:"
+curl -s http://localhost:8010/info/$MESSAGE_ID | jq '{energy: .info.energy, hops: .info.hops, path: .info.path}'
+
+echo "Forwarded nodes:"
+curl -s http://localhost:8011/info/$MESSAGE_ID | jq '{energy: .info.energy, hops: .info.hops, path: .info.path}'
+curl -s http://localhost:8012/info/$MESSAGE_ID | jq '{energy: .info.energy, hops: .info.hops, path: .info.path}'
+
+# Expected results:
+# Original: energy=3, hops=0, path=["node_X"] 
+# Forwarded: energy=2, hops=1, path=["node_X", "node_X"]
+
+# Clean up
+./ryx-cluster -cmd stop
+```
+
+### **Test 8: Energy Exhaustion**
+```bash
+# Start cluster
+./ryx-cluster -cmd start -nodes 3
+sleep 8
+
+# Inject message with low energy
+curl -X POST http://localhost:8010/inject \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Low Energy Test","energy":1}'
+
+sleep 3
+
+# Check propagation - should reach neighbors but not propagate further
+MESSAGE_ID=$(curl -s http://localhost:8010/info | jq -r '.info | keys[0]')
+
+echo "=== Energy Exhaustion Test ==="
+echo "Original node (energy=1):"
+curl -s http://localhost:8010/info/$MESSAGE_ID | jq '.info.energy'
+
+echo "Neighbor nodes (energy=0, no further propagation):"
+curl -s http://localhost:8011/info/$MESSAGE_ID | jq '.info.energy'
+curl -s http://localhost:8012/info/$MESSAGE_ID | jq '.info.energy'
+
+# Expected: All nodes have the message, but forwarded copies have energy=0
+
+# Clean up
+./ryx-cluster -cmd stop
+```
+
+### **Test 9: Multi-Node Content Distribution (Legacy)**
 ```bash
 # Start cluster
 ./ryx-cluster -cmd start -nodes 3
 
-# Inject same content into different nodes
+# Inject same content into different nodes - Phase 2B will deduplicate
 ./ryx-cluster -cmd inject -content "Shared Message" -node 0
-./ryx-cluster -cmd inject -content "Shared Message" -node 1  
-./ryx-cluster -cmd inject -content "Shared Message" -node 2
+sleep 3  # Wait for diffusion
 
-# Check if each node stores it independently (Phase 2A behavior)
+./ryx-cluster -cmd inject -content "Shared Message" -node 1
+sleep 3  # This should be deduplicated
+
+# Check message counts - all nodes should have 1 message (deduplicated)
+echo "=== Deduplication Test ==="
 curl http://localhost:8010/info | jq '.count'  # Should be 1
 curl http://localhost:8011/info | jq '.count'  # Should be 1  
 curl http://localhost:8012/info | jq '.count'  # Should be 1
@@ -245,7 +321,25 @@ echo "Node 2 ID: $ID_2"
 ./ryx-cluster -cmd stop
 ```
 
-## 📊 Expected Results
+## Expected Results
+
+### **Phase 2B Diffusion Results**
+
+#### Test 7: Basic Inter-Node Diffusion
+- **Message Count**: All 3 nodes should have count=1 (message spread to all)
+- **Energy Decay**: Original energy=3, forwarded energy=2  
+- **Hop Tracking**: Original hops=0, forwarded hops=1
+- **Path Tracking**: Original path=["node_A"], forwarded path=["node_A", "node_A"]
+
+#### Test 8: Energy Exhaustion
+- **Propagation**: Message reaches immediate neighbors only
+- **Energy States**: Original=1, neighbors=0 (no further forwarding)
+- **Network Coverage**: Limited by energy, demonstrates controlled propagation
+
+#### Test 9: Network-Wide Deduplication
+- **Behavior**: Second injection of same content ignored (already exists)
+- **Consistency**: All nodes have identical message ID and content
+- **Efficiency**: No duplicate storage or propagation
 
 ### **Successful Test Results**
 

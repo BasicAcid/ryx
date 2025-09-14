@@ -8,6 +8,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/BasicAcid/ryx/internal/types"
 )
 
 // Neighbor represents a discovered neighbor node
@@ -90,8 +92,25 @@ func (s *Service) Stop() {
 	}
 }
 
-// GetNeighbors returns current neighbors
-func (s *Service) GetNeighbors() map[string]*Neighbor {
+// GetNeighbors returns current neighbors as a slice for diffusion service
+func (s *Service) GetNeighbors() []*types.Neighbor {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	neighbors := make([]*types.Neighbor, 0, len(s.neighbors))
+	for _, neighbor := range s.neighbors {
+		neighbors = append(neighbors, &types.Neighbor{
+			NodeID:    neighbor.NodeID,
+			Address:   neighbor.Address,
+			Port:      neighbor.Port,
+			ClusterID: neighbor.ClusterID,
+		})
+	}
+	return neighbors
+}
+
+// GetNeighborsMap returns current neighbors as a map for backward compatibility
+func (s *Service) GetNeighborsMap() map[string]*Neighbor {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

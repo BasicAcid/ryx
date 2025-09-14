@@ -2,24 +2,30 @@
 
 A practical implementation of Dave Ackley's robust-first distributed computing model, built in Go for production deployment.
 
-## ✨ Features
+## Features
 
-### Phase 1: Core Foundation ✅
+### Phase 1: Core Foundation (Complete)
 - **Effortless scaling**: Add nodes without configuration changes
 - **Automatic discovery**: Nodes find each other via UDP broadcast
 - **Single binary**: Deploy anywhere with zero dependencies
 - **HTTP API**: Monitor and control via REST endpoints
 
-### Phase 2A: Information Diffusion ✅
+### Phase 2A: Information Storage (Complete)
 - **Information injection**: Seed data into the network via HTTP API
 - **Content-addressable storage**: SHA256-based message deduplication
 - **TTL-based cleanup**: Automatic memory management prevents leaks
 - **Cluster management**: `ryx-cluster` tool for easy local testing
 - **Comprehensive logging**: Detailed operation tracking for debugging
 
-## 🚀 Quick Start
+### Phase 2B: Inter-Node Diffusion (Complete)
+- **Message forwarding**: Information automatically spreads between neighbors
+- **Energy decay**: Messages lose energy with each hop, limiting propagation distance
+- **Loop prevention**: Path tracking prevents infinite message cycles
+- **Hop tracking**: Full propagation history maintained for analysis
 
-### Phase 2A: Automated Cluster Testing
+## Quick Start
+
+### Automated Cluster Testing
 
 ```bash
 # Build both binaries
@@ -29,10 +35,10 @@ go build -o ryx-cluster ./cmd/ryx-cluster
 # Start a 3-node cluster
 ./ryx-cluster -cmd start -nodes 3
 
-# Inject information into the network
-./ryx-cluster -cmd inject -content "Hello Ryx Network" -energy 5
+# Inject information that spreads across all nodes (Phase 2B)
+./ryx-cluster -cmd inject -content "Hello Ryx Network" -energy 3
 
-# Check cluster status
+# Check cluster status and diffusion results
 ./ryx-cluster -cmd status
 
 # Stop the cluster
@@ -96,7 +102,7 @@ curl -s http://localhost:8011/status | jq '.neighbors | length'  # Should show 2
 curl -s http://localhost:8012/status | jq '.neighbors | length'  # Should show 2
 ```
 
-## 🔌 HTTP API
+## HTTP API
 
 Each node exposes a REST API on its HTTP port:
 
@@ -109,10 +115,10 @@ Each node exposes a REST API on its HTTP port:
 | `/health` | GET | Health check | Simple status |
 | `/ping` | GET | Connectivity test | Pong response |
 
-#### Phase 2A: Information Diffusion
+#### Information Diffusion
 | Endpoint | Method | Description | Response |
 |----------|--------|-------------|----------|
-| `/inject` | POST | Inject information into network | Success + info details |
+| `/inject` | POST | Inject information that spreads across network | Success + info details |
 | `/info` | GET | List all stored information | Count + info list |
 | `/info/{id}` | GET | Get specific information by ID | Info details |
 
@@ -147,17 +153,17 @@ curl http://localhost:8010/health
   "timestamp": 1757758332
 }
 
-# Inject information (Phase 2A)
+# Inject information that spreads across cluster
 curl -X POST http://localhost:8010/inject \
   -H "Content-Type: application/json" \
-  -d '{"content":"Hello Network","energy":5,"ttl":300}'
+  -d '{"content":"Hello Network","energy":3,"ttl":300}'
 {
   "success": true,
   "info": {
     "id": "9f86d081884c7d65",
     "type": "text",
     "content": "SGVsbG8gTmV0d29yaw==",
-    "energy": 5,
+    "energy": 3,
     "ttl": 1757760123,
     "hops": 0,
     "source": "node_f4960d50",
@@ -165,6 +171,18 @@ curl -X POST http://localhost:8010/inject \
     "timestamp": 1757759823
   },
   "message": "Information injected successfully"
+}
+
+# Check message on different nodes - shows energy decay and path tracking
+curl http://localhost:8011/info/9f86d081884c7d65
+{
+  "info": {
+    "id": "9f86d081884c7d65",
+    "energy": 2,         # Energy decreased by 1
+    "hops": 1,           # One hop from original node
+    "path": ["node_f4960d50", "node_f4960d50"]  # Propagation path
+    ...
+  }
 }
 
 # List all information
@@ -177,12 +195,13 @@ curl http://localhost:8010/info
 }
 ```
 
-## 🏗️ Architecture
+## Architecture
 
 ### Core Components
 
 - **Node Discovery**: UDP broadcast for automatic neighbor detection
-- **Communication**: UDP messaging between neighbors
+- **Communication**: UDP messaging between neighbors with info forwarding
+- **Information Diffusion**: Energy-based message propagation with loop prevention
 - **HTTP API**: REST endpoints for monitoring and control
 - **Health Monitoring**: Automatic neighbor health tracking
 
@@ -210,11 +229,11 @@ curl http://localhost:8010/info
 4. Neighbors are tracked with last-seen timestamps
 5. Stale neighbors are cleaned up after 60 seconds
 
-## 🧠 Key Concepts
+## Key Concepts
 
-### **Content-Addressable Storage**
+### Content-Addressable Storage
 
-Ryx uses **SHA256-based content addressing** where each piece of information gets a unique ID based on its content. This is fundamental to how the system works:
+Ryx uses SHA256-based content addressing where each piece of information gets a unique ID based on its content:
 
 ```bash
 # Same content always produces the same ID
@@ -226,55 +245,53 @@ Ryx uses **SHA256-based content addressing** where each piece of information get
 "Hello Universe" → ID: b2c3d4e5f6789ab1
 ```
 
-**Why This Design?**
-- ✅ **Deduplication**: Identical information is stored only once
-- ✅ **Data Integrity**: Content hash verifies data hasn't been corrupted
-- ✅ **Loop Prevention**: Critical for distributed diffusion algorithms
-- ✅ **Memory Efficiency**: Same content uses same storage across all nodes
+**Benefits:**
+- **Deduplication**: Identical information is stored only once
+- **Data Integrity**: Content hash verifies data hasn't been corrupted
+- **Loop Prevention**: Critical for distributed diffusion algorithms
+- **Memory Efficiency**: Same content uses same storage across all nodes
 
-### **Understanding Message Behavior**
+### Information Diffusion
 
-#### **Expected: Unique Content Creates New Messages**
+Messages spread through the network with energy-based propagation:
+
 ```bash
-./ryx-cluster -cmd inject -content "Event A"    # Creates message 1
-./ryx-cluster -cmd inject -content "Event B"    # Creates message 2
-./ryx-cluster -cmd inject -content "Event C"    # Creates message 3
-# Result: 3 different messages stored
+# Energy decreases with each hop
+Original Node:  energy=3, hops=0, path=["node_A"]
+Neighbor Nodes: energy=2, hops=1, path=["node_A", "node_A"]
 ```
 
-#### **Expected: Duplicate Content is Deduplicated**
+**Key Features:**
+- **Energy Decay**: Messages lose 1 energy per hop, stopping when energy reaches 0
+- **Path Tracking**: Full propagation history prevents infinite loops
+- **Automatic Forwarding**: New information spreads without manual intervention
+
+### Testing Diffusion Behavior
+
+#### Unique Content Creates New Messages
 ```bash
-./ryx-cluster -cmd inject -content "Log Entry"           # Creates message 1
-./ryx-cluster -cmd inject -content "Log Entry"           # Duplicate, not stored
-./ryx-cluster -cmd inject -content "Log Entry" -energy 10 # Still duplicate
-# Result: Only 1 message stored (deduplication working correctly)
+./ryx-cluster -cmd inject -content "Event A"    # Creates message 1, spreads to all nodes
+./ryx-cluster -cmd inject -content "Event B"    # Creates message 2, spreads to all nodes
+./ryx-cluster -cmd inject -content "Event C"    # Creates message 3, spreads to all nodes
+# Result: 3 different messages on each node
 ```
 
-#### **Generating Unique Content for Testing**
+#### Duplicate Content is Deduplicated
 ```bash
-# Use timestamps for unique content
-./ryx-cluster -cmd inject -content "Event $(date +%s)"
-
-# Use counters
-for i in {1..5}; do
-  ./ryx-cluster -cmd inject -content "Message $i"
-done
-
-# Use random data
-./ryx-cluster -cmd inject -content "Data $RANDOM"
+./ryx-cluster -cmd inject -content "Log Entry"           # Creates message, spreads once
+./ryx-cluster -cmd inject -content "Log Entry"           # Duplicate, ignored
+./ryx-cluster -cmd inject -content "Log Entry" -energy 10 # Still duplicate, ignored
+# Result: Only 1 message across all nodes
 ```
 
-### **Phase 2A vs Phase 2B Behavior**
+#### Energy Limits Propagation Distance
+```bash
+./ryx-cluster -cmd inject -content "Low energy" -energy 1
+# Result: Message reaches immediate neighbors only (energy=0 stops further spread)
 
-**Current Phase 2A**: Information Storage Foundation
-- ✅ Each node stores information independently
-- ✅ Content-addressable deduplication within each node
-- ✅ No inter-node message sharing (that's Phase 2B)
-
-**Future Phase 2B**: Inter-Node Diffusion
-- ⏳ Messages will spread between neighbor nodes
-- ⏳ Energy decay will limit propagation distance
-- ⏳ Loop prevention using path tracking
+./ryx-cluster -cmd inject -content "High energy" -energy 5  
+# Result: Message can travel up to 5 hops through the network
+```
 
 ## 🛠️ Development
 
@@ -327,21 +344,27 @@ pkill ryx-node
 
 ## 🗺️ Roadmap
 
-### ✅ Phase 1: Core Foundation (Complete)
+### Phase 1: Core Foundation (Complete)
 - Node discovery and communication
 - HTTP API for monitoring
 - Graceful startup/shutdown
 
-### ✅ Phase 2A: Information Diffusion (Complete)
+### Phase 2A: Information Storage (Complete)
 - Information injection via HTTP API
 - Content-addressable storage with SHA256 IDs
 - TTL-based automatic cleanup
 - `ryx-cluster` tool for easy local testing
 - Comprehensive logging and error handling
 
-### 🚧 Phase 2B: Computation Engine (Next)
-- Energy-based task diffusion between nodes
-- Distributed computation execution  
+### Phase 2B: Inter-Node Diffusion (Complete)
+- Energy-based message forwarding between neighbors
+- Automatic loop prevention using path tracking
+- Energy decay limiting propagation distance
+- Hop counting for diffusion analysis
+
+### Phase 2C: Computation Engine (Next)
+- Distributed task execution with result collection
+- Energy-based work distribution
 - Result aggregation through neighbor consensus
 
 ### 📋 Phase 3: Advanced Development Tools
@@ -373,4 +396,4 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Status**: Phase 1 complete ✅ - Ready for Phase 2 development
+**Status**: Phase 2B complete - Inter-node information diffusion operational

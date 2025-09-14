@@ -1,0 +1,21 @@
+# Binaries
+ryx-node
+ryx-cluster
+
+# Runtime files  
+.ryx-cluster.pids
+
+# Editor temporary files
+*.kate-swp
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.iml

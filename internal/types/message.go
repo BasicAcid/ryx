@@ -18,3 +18,21 @@ type InfoMessage struct {
 type InfoMessageHandler interface {
 	HandleInfoMessage(msg *InfoMessage, fromNodeID string) error
 }
+
+// CommunicationService defines the interface for sending messages between nodes
+type CommunicationService interface {
+	SendInfoMessage(nodeID, address string, port int, msg *InfoMessage) error
+}
+
+// DiscoveryService defines the interface for neighbor discovery
+type DiscoveryService interface {
+	GetNeighbors() []*Neighbor
+}
+
+// Neighbor represents a discovered neighbor node
+type Neighbor struct {
+	NodeID    string `json:"node_id"`
+	Address   string `json:"address"`
+	Port      int    `json:"port"`
+	ClusterID string `json:"cluster_id"`
+}

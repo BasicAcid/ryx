@@ -103,6 +103,13 @@ func (n *Node) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start diffusion: %w", err)
 	}
 
+	// Wire up service dependencies for Phase 2B inter-node diffusion
+	n.diffusion.SetCommunication(n.comm)
+	n.diffusion.SetDiscovery(n.discovery)
+	n.comm.SetDiffusionService(n.diffusion)
+
+	log.Printf("Node %s: Phase 2B inter-node diffusion services wired up", n.id)
+
 	// Start HTTP API server
 	if err := n.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API server: %w", err)

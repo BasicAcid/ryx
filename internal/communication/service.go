@@ -8,6 +8,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/BasicAcid/ryx/internal/types"
 )
 
 // Message represents a communication message between nodes
@@ -23,12 +25,13 @@ type Message struct {
 
 // Service handles inter-node communication
 type Service struct {
-	port   int
-	nodeID string
-	conn   *net.UDPConn
-	ctx    context.Context
-	cancel context.CancelFunc
-	mu     sync.RWMutex
+	port             int
+	nodeID           string
+	conn             *net.UDPConn
+	ctx              context.Context
+	cancel           context.CancelFunc
+	mu               sync.RWMutex
+	diffusionService types.InfoMessageHandler
 }
 
 // New creates a new communication service
@@ -110,6 +113,27 @@ func (s *Service) SendPing(address string, port int) error {
 	return s.SendMessage(address, port, message)
 }
 
+// SetDiffusionService injects the diffusion service for handling info messages
+func (s *Service) SetDiffusionService(diffService types.InfoMessageHandler) {
+	s.diffusionService = diffService
+}
+
+// SendInfoMessage sends an InfoMessage to a specific node
+func (s *Service) SendInfoMessage(nodeID, address string, port int, infoMsg *types.InfoMessage) error {
+	// Convert InfoMessage to communication Message
+	msg := &Message{
+		Type:      "info",
+		From:      s.nodeID,
+		To:        nodeID,
+		Data:      s.convertInfoMessageToData(infoMsg),
+		Energy:    infoMsg.Energy,
+		Hops:      infoMsg.Hops,
+		Timestamp: time.Now().Unix(),
+	}
+
+	return s.SendMessage(address, port, msg)
+}
+
 // messageLoop handles incoming messages
 func (s *Service) messageLoop() {
 	buffer := make([]byte, 4096)
@@ -186,8 +210,110 @@ func (s *Service) handlePong(msg *Message, addr *net.UDPAddr) {
 	}
 }
 
-// handleInfo processes information messages
+// handleInfo processes information messages and routes them to the diffusion service
 func (s *Service) handleInfo(msg *Message, addr *net.UDPAddr) {
-	log.Printf("Info from %s: %v", msg.From, msg.Data)
-	// TODO: Implement information diffusion logic
+	log.Printf("Received info message from %s", msg.From)
+
+	if s.diffusionService == nil {
+		log.Printf("No diffusion service configured, ignoring info message")
+		return
+	}
+
+	// Convert communication message to InfoMessage
+	infoMsg, err := s.convertToInfoMessage(msg)
+	if err != nil {
+		log.Printf("Failed to convert message to InfoMessage: %v", err)
+		return
+	}
+
+	// Route to diffusion service
+	err = s.diffusionService.HandleInfoMessage(infoMsg, msg.From)
+	if err != nil {
+		log.Printf("Failed to handle info message: %v", err)
+	}
+}
+
+// convertToInfoMessage converts a communication Message to an InfoMessage
+func (s *Service) convertToInfoMessage(msg *Message) (*types.InfoMessage, error) {
+	data := msg.Data
+
+	// Extract required fields from the message data
+	id, ok := data["id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid id field")
+	}
+
+	infoType, ok := data["type"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid type field")
+	}
+
+	contentStr, ok := data["content"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid content field")
+	}
+	content := []byte(contentStr)
+
+	ttl, ok := data["ttl"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid ttl field")
+	}
+
+	source, ok := data["source"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid source field")
+	}
+
+	timestamp, ok := data["timestamp"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid timestamp field")
+	}
+
+	// Extract path
+	pathInterface, ok := data["path"].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid path field")
+	}
+
+	path := make([]string, len(pathInterface))
+	for i, p := range pathInterface {
+		pathStr, ok := p.(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid path element")
+		}
+		path[i] = pathStr
+	}
+
+	// Extract metadata
+	metadata := make(map[string]interface{})
+	if metaInterface, ok := data["metadata"].(map[string]interface{}); ok {
+		metadata = metaInterface
+	}
+
+	return &types.InfoMessage{
+		ID:        id,
+		Type:      infoType,
+		Content:   content,
+		Energy:    msg.Energy,
+		TTL:       int64(ttl),
+		Hops:      msg.Hops,
+		Source:    source,
+		Path:      path,
+		Timestamp: int64(timestamp),
+		Metadata:  metadata,
+	}, nil
+}
+
+// convertInfoMessageToData converts an InfoMessage to map[string]interface{} for transmission
+func (s *Service) convertInfoMessageToData(infoMsg *types.InfoMessage) map[string]interface{} {
+	return map[string]interface{}{
+		"id":        infoMsg.ID,
+		"type":      infoMsg.Type,
+		"content":   string(infoMsg.Content),
+		"ttl":       infoMsg.TTL,
+		"source":    infoMsg.Source,
+		"path":      infoMsg.Path,
+		"timestamp": infoMsg.Timestamp,
+		"metadata":  infoMsg.Metadata,
+	}
 }
