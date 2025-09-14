@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BasicAcid/ryx/internal/computation"
 	"github.com/BasicAcid/ryx/internal/diffusion"
+	"github.com/BasicAcid/ryx/internal/types"
 )
 
 // NodeStatusProvider interface for getting node status
@@ -23,10 +25,16 @@ type DiffusionProvider interface {
 	GetDiffusionService() *diffusion.Service
 }
 
-// NodeProvider combines both interfaces
+// ComputationProvider interface for accessing computation service
+type ComputationProvider interface {
+	GetComputationService() *computation.Service
+}
+
+// NodeProvider combines all interfaces
 type NodeProvider interface {
 	NodeStatusProvider
 	DiffusionProvider
+	ComputationProvider
 }
 
 // Server provides HTTP API for node control and status
@@ -57,6 +65,10 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/inject", s.handleInject)
 	mux.HandleFunc("/info", s.handleInfo)
 	mux.HandleFunc("/info/", s.handleInfoByID)
+
+	// Computation endpoints (Phase 2C)
+	mux.HandleFunc("/compute", s.handleCompute)
+	mux.HandleFunc("/compute/", s.handleComputeByID)
 
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
@@ -291,6 +303,165 @@ func (s *Server) handleInfoByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("handleInfoByID: found info id=%s", id)
+	s.writeJSON(w, response)
+}
+
+// handleCompute processes computational task injection and queries
+func (s *Server) handleCompute(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		s.handleComputeInject(w, r)
+	case http.MethodGet:
+		s.handleComputeList(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleComputeInject injects a computational task into the network
+func (s *Server) handleComputeInject(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Panic in handleComputeInject: %v", r)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+	}()
+
+	log.Printf("handleComputeInject: processing task injection request")
+
+	var request types.ComputationTask
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Printf("handleComputeInject: failed to decode request: %v", err)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if request.Type == "" {
+		http.Error(w, "Task type is required", http.StatusBadRequest)
+		return
+	}
+	if request.Data == "" {
+		http.Error(w, "Task data is required", http.StatusBadRequest)
+		return
+	}
+
+	// Set defaults
+	if request.Energy == 0 {
+		request.Energy = 3 // Default energy for wide distribution
+	}
+	if request.TTL == 0 {
+		request.TTL = 300 // 5 minutes default
+	}
+	if request.Parameters == nil {
+		request.Parameters = make(map[string]interface{})
+	}
+
+	// Serialize task for InfoMessage
+	taskData, err := json.Marshal(request)
+	if err != nil {
+		log.Printf("handleComputeInject: failed to serialize task: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Create and inject task via diffusion service
+	diffusion := s.node.GetDiffusionService()
+	if diffusion == nil {
+		log.Printf("handleComputeInject: diffusion service not available")
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	info, err := diffusion.InjectInfo("task", taskData, request.Energy, time.Duration(request.TTL)*time.Second)
+	if err != nil {
+		log.Printf("handleComputeInject: failed to inject task: %v", err)
+		http.Error(w, "Failed to inject task", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"message": "Computational task injected successfully",
+		"task": map[string]interface{}{
+			"id":        info.ID,
+			"type":      request.Type,
+			"energy":    info.Energy,
+			"ttl":       info.TTL,
+			"timestamp": info.Timestamp,
+		},
+	}
+
+	log.Printf("handleComputeInject: task injected successfully, id=%s", info.ID)
+	s.writeJSON(w, response)
+}
+
+// handleComputeList lists all active and completed computations
+func (s *Server) handleComputeList(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Panic in handleComputeList: %v", r)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+	}()
+
+	computation := s.node.GetComputationService()
+	if computation == nil {
+		http.Error(w, "Computation service not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	active := computation.GetActiveComputations()
+	stats := computation.GetComputationStats()
+
+	response := map[string]interface{}{
+		"active_computations": active,
+		"stats":               stats,
+	}
+
+	s.writeJSON(w, response)
+}
+
+// handleComputeByID handles requests for specific computation results
+func (s *Server) handleComputeByID(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Panic in handleComputeByID: %v", r)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+	}()
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract computation ID from path
+	path := strings.TrimPrefix(r.URL.Path, "/compute/")
+	if path == "" {
+		http.Error(w, "Computation ID required", http.StatusBadRequest)
+		return
+	}
+
+	taskID := strings.Split(path, "/")[0]
+
+	computation := s.node.GetComputationService()
+	if computation == nil {
+		http.Error(w, "Computation service not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	result, exists := computation.GetComputationResult(taskID)
+	if !exists {
+		http.Error(w, "Computation not found", http.StatusNotFound)
+		return
+	}
+
+	response := map[string]interface{}{
+		"task_id": taskID,
+		"result":  result,
+	}
+
 	s.writeJSON(w, response)
 }
 

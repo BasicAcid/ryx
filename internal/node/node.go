@@ -11,6 +11,7 @@ import (
 
 	"github.com/BasicAcid/ryx/internal/api"
 	"github.com/BasicAcid/ryx/internal/communication"
+	"github.com/BasicAcid/ryx/internal/computation"
 	"github.com/BasicAcid/ryx/internal/diffusion"
 	"github.com/BasicAcid/ryx/internal/discovery"
 )
@@ -25,14 +26,15 @@ type Config struct {
 
 // Node represents a single ryx node
 type Node struct {
-	id        string
-	config    *Config
-	discovery *discovery.Service
-	comm      *communication.Service
-	diffusion *diffusion.Service
-	api       *api.Server
-	mu        sync.RWMutex
-	running   bool
+	id          string
+	config      *Config
+	discovery   *discovery.Service
+	comm        *communication.Service
+	diffusion   *diffusion.Service
+	computation *computation.Service
+	api         *api.Server
+	mu          sync.RWMutex
+	running     bool
 }
 
 // New creates a new node instance
@@ -63,6 +65,9 @@ func New(config *Config) (*Node, error) {
 
 	// Initialize diffusion service
 	node.diffusion = diffusion.New(nodeID)
+
+	// Initialize computation service
+	node.computation = computation.New(nodeID)
 
 	node.api, err = api.New(config.HTTPPort, node)
 	if err != nil {
@@ -103,12 +108,21 @@ func (n *Node) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start diffusion: %w", err)
 	}
 
+	// Start computation service
+	if err := n.computation.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start computation: %w", err)
+	}
+
 	// Wire up service dependencies for Phase 2B inter-node diffusion
 	n.diffusion.SetCommunication(n.comm)
 	n.diffusion.SetDiscovery(n.discovery)
 	n.comm.SetDiffusionService(n.diffusion)
 
-	log.Printf("Node %s: Phase 2B inter-node diffusion services wired up", n.id)
+	// Wire up Phase 2C computation integration
+	n.diffusion.SetComputationService(n.computation)
+	n.computation.SetDiffusionService(n.diffusion)
+
+	log.Printf("Node %s: Phase 2B diffusion and Phase 2C computation services wired up", n.id)
 
 	// Start HTTP API server
 	if err := n.api.Start(ctx); err != nil {
@@ -135,6 +149,9 @@ func (n *Node) Stop() {
 	// Stop services in reverse order
 	if n.api != nil {
 		n.api.Stop()
+	}
+	if n.computation != nil {
+		n.computation.Stop()
 	}
 	if n.diffusion != nil {
 		n.diffusion.Stop()
@@ -173,12 +190,21 @@ func (n *Node) GetStatus() map[string]interface{} {
 		status["diffusion"] = n.diffusion.GetStats()
 	}
 
+	if n.computation != nil {
+		status["computation"] = n.computation.GetComputationStats()
+	}
+
 	return status
 }
 
 // GetDiffusionService returns the diffusion service for API access
 func (n *Node) GetDiffusionService() *diffusion.Service {
 	return n.diffusion
+}
+
+// GetComputationService returns the computation service for API access
+func (n *Node) GetComputationService() *computation.Service {
+	return n.computation
 }
 
 // generateNodeID creates a random node identifier

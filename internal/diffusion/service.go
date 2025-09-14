@@ -13,13 +13,14 @@ import (
 
 // Service manages information diffusion
 type Service struct {
-	nodeID  string
-	storage map[string]*types.InfoMessage
-	mu      sync.RWMutex
-	ctx     context.Context
-	cancel  context.CancelFunc
-	comm    types.CommunicationService
-	disc    types.DiscoveryService
+	nodeID      string
+	storage     map[string]*types.InfoMessage
+	mu          sync.RWMutex
+	ctx         context.Context
+	cancel      context.CancelFunc
+	comm        types.CommunicationService
+	disc        types.DiscoveryService
+	computation types.ComputationService
 }
 
 // New creates a new diffusion service
@@ -120,6 +121,12 @@ func (s *Service) HandleInfoMessage(msg *types.InfoMessage, fromNodeID string) e
 
 	log.Printf("HandleInfoMessage: stored message id=%s", msg.ID)
 
+	// Phase 2C: Route computational tasks to computation service
+	if msg.Type == "task" && s.computation != nil {
+		log.Printf("HandleInfoMessage: routing task message id=%s to computation service", msg.ID)
+		go s.computation.ExecuteTask(msg)
+	}
+
 	// Forward to neighbors if energy > 0
 	if msg.Energy > 0 {
 		log.Printf("HandleInfoMessage: forwarding message id=%s with energy=%d", msg.ID, msg.Energy)
@@ -216,6 +223,11 @@ func (s *Service) SetCommunication(comm types.CommunicationService) {
 // SetDiscovery injects the discovery service for finding neighbors
 func (s *Service) SetDiscovery(disc types.DiscoveryService) {
 	s.disc = disc
+}
+
+// SetComputationService injects the computation service for task execution
+func (s *Service) SetComputationService(comp types.ComputationService) {
+	s.computation = comp
 }
 
 // forwardToNeighbors forwards a message to all eligible neighbors
