@@ -62,24 +62,26 @@ func New(cfg *Config) (*Node, error) {
 		behaviorMod:   behaviorMod,
 	}
 
-	// Initialize services
+	// Phase 3B: Initialize services with advanced behavior modification
 	var err error
 
-	node.discovery, err = discovery.New(cfg.Port, cfg.ClusterID, nodeID)
+	// Initialize discovery service with performance-based neighbor selection
+	node.discovery, err = discovery.NewWithConfig(cfg.Port, cfg.ClusterID, nodeID, runtimeParams, behaviorMod)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discovery service: %w", err)
 	}
 
-	node.comm, err = communication.New(cfg.Port, nodeID)
+	// Initialize communication service with fault pattern learning
+	node.comm, err = communication.NewWithConfig(cfg.Port, nodeID, behaviorMod)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create communication service: %w", err)
 	}
 
-	// Initialize diffusion service with configuration
+	// Initialize diffusion service with network-aware adaptation
 	node.diffusion = diffusion.NewWithConfig(nodeID, runtimeParams, behaviorMod)
 
-	// Initialize computation service
-	node.computation = computation.New(nodeID)
+	// Initialize computation service with load-based optimization
+	node.computation = computation.NewWithConfig(nodeID, runtimeParams, behaviorMod)
 
 	node.api, err = api.New(cfg.HTTPPort, node)
 	if err != nil {

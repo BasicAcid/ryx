@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BasicAcid/ryx/internal/config"
 	"github.com/BasicAcid/ryx/internal/types"
 )
 
@@ -32,6 +33,9 @@ type Service struct {
 	cancel           context.CancelFunc
 	mu               sync.RWMutex
 	diffusionService types.InfoMessageHandler
+
+	// Phase 3B: Fault pattern learning
+	behaviorMod config.BehaviorModifier
 }
 
 // New creates a new communication service
@@ -39,6 +43,15 @@ func New(port int, nodeID string) (*Service, error) {
 	return &Service{
 		port:   port,
 		nodeID: nodeID,
+	}, nil
+}
+
+// NewWithConfig creates a communication service with behavior modification
+func NewWithConfig(port int, nodeID string, behaviorMod config.BehaviorModifier) (*Service, error) {
+	return &Service{
+		port:        port,
+		nodeID:      nodeID,
+		behaviorMod: behaviorMod,
 	}, nil
 }
 
@@ -118,8 +131,10 @@ func (s *Service) SetDiffusionService(diffService types.InfoMessageHandler) {
 	s.diffusionService = diffService
 }
 
-// SendInfoMessage sends an InfoMessage to a specific node
+// SendInfoMessage sends an InfoMessage to a specific node with performance tracking
 func (s *Service) SendInfoMessage(nodeID, address string, port int, infoMsg *types.InfoMessage) error {
+	startTime := time.Now()
+
 	// Convert InfoMessage to communication Message
 	msg := &Message{
 		Type:      "info",
@@ -131,7 +146,25 @@ func (s *Service) SendInfoMessage(nodeID, address string, port int, infoMsg *typ
 		Timestamp: time.Now().Unix(),
 	}
 
-	return s.SendMessage(address, port, msg)
+	err := s.SendMessage(address, port, msg)
+	latency := time.Since(startTime)
+
+	// Phase 3B: Record performance metrics for adaptive behavior
+	if s.behaviorMod != nil {
+		if adaptiveMod, ok := s.behaviorMod.(*config.AdaptiveBehaviorModifier); ok {
+			if err != nil {
+				// Record failure
+				adaptiveMod.RecordCommunicationFailure(nodeID, infoMsg.Type, err.Error())
+				adaptiveMod.RecordNeighborPerformance(nodeID, latency, false)
+			} else {
+				// Record success
+				adaptiveMod.RecordCommunicationSuccess(nodeID)
+				adaptiveMod.RecordNeighborPerformance(nodeID, latency, true)
+			}
+		}
+	}
+
+	return err
 }
 
 // messageLoop handles incoming messages

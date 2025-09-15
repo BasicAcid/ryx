@@ -346,11 +346,16 @@ func (s *Service) shouldForward(msg *types.InfoMessage, targetNodeID string) boo
 
 // createForwardedMessage creates a new message for forwarding with updated energy and path
 func (s *Service) createForwardedMessage(original *types.InfoMessage, targetNodeID string) *types.InfoMessage {
-	// Calculate energy decay using behavior modifier
+	// Calculate energy decay using behavior modifier with Phase 3B network-aware adaptation
 	defaultDecay := 1.0
 	energyDecay := defaultDecay
 	if s.behaviorMod != nil {
-		energyDecay = s.behaviorMod.ModifyEnergyDecay(original, defaultDecay)
+		// Try to use advanced network-aware decay if available
+		if adaptiveMod, ok := s.behaviorMod.(*config.AdaptiveBehaviorModifier); ok {
+			energyDecay = adaptiveMod.ModifyEnergyDecayForNeighbor(original, defaultDecay, targetNodeID)
+		} else {
+			energyDecay = s.behaviorMod.ModifyEnergyDecay(original, defaultDecay)
+		}
 	}
 
 	// Create a deep copy with adaptive energy decay

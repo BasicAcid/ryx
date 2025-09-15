@@ -11,8 +11,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BasicAcid/ryx/internal/config"
 	"github.com/BasicAcid/ryx/internal/types"
 )
+
+// queuedTask represents a task waiting for execution due to load constraints
+type queuedTask struct {
+	msg      *types.InfoMessage
+	task     *types.ComputationTask
+	executor types.TaskExecutor
+	queued   time.Time
+}
 
 // Service manages distributed computation execution
 type Service struct {
@@ -24,6 +33,12 @@ type Service struct {
 	mu        sync.RWMutex
 	ctx       context.Context
 	cancel    context.CancelFunc
+
+	// Phase 3B: Advanced load-based optimization
+	runtimeParams *config.RuntimeParameters
+	behaviorMod   config.BehaviorModifier
+	taskQueue     []*queuedTask
+	queueMu       sync.RWMutex
 }
 
 // New creates a new computation service
@@ -43,6 +58,28 @@ func New(nodeID string) *Service {
 	return s
 }
 
+// NewWithConfig creates a new computation service with runtime configuration
+func NewWithConfig(nodeID string, params *config.RuntimeParameters, behaviorMod config.BehaviorModifier) *Service {
+	log.Printf("Creating computation service for node %s with adaptive behavior", nodeID)
+
+	s := &Service{
+		nodeID:    nodeID,
+		executors: make(map[string]types.TaskExecutor),
+		active:    make(map[string]*types.ComputationResult),
+		completed: make(map[string]*types.ComputationResult),
+
+		// Phase 3B: Advanced configuration
+		runtimeParams: params,
+		behaviorMod:   behaviorMod,
+		taskQueue:     make([]*queuedTask, 0),
+	}
+
+	// Register built-in executors
+	s.registerExecutor(&WordCountExecutor{})
+
+	return s
+}
+
 // Start begins the computation service
 func (s *Service) Start(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(ctx)
@@ -50,6 +87,9 @@ func (s *Service) Start(ctx context.Context) error {
 
 	// Start cleanup routine for completed computations
 	go s.cleanupLoop()
+
+	// Phase 3B: Start task queue processor
+	go s.taskQueueLoop()
 
 	return nil
 }
@@ -108,6 +148,16 @@ func (s *Service) ExecuteTask(msg *types.InfoMessage) error {
 		return nil // Not an error, just not supported on this node
 	}
 
+	// Phase 3B: Load-based scheduling decision
+	if s.behaviorMod != nil {
+		systemLoad := s.getCurrentSystemLoad()
+		if !s.behaviorMod.ShouldExecuteTask(&task, systemLoad) {
+			log.Printf("Task %s queued due to system load (%.2f)", msg.ID, systemLoad)
+			s.queueTask(msg, &task, executor)
+			return nil
+		}
+	}
+
 	// Mark task as active
 	s.mu.Lock()
 	s.active[msg.ID] = &types.ComputationResult{
@@ -122,6 +172,172 @@ func (s *Service) ExecuteTask(msg *types.InfoMessage) error {
 	go s.executeTaskAsync(msg.ID, &task, executor)
 
 	return nil
+}
+
+// Phase 3B: Load-based scheduling methods
+
+// getCurrentSystemLoad estimates current system load
+func (s *Service) getCurrentSystemLoad() float64 {
+	// Get active task count as a simple load metric
+	s.mu.RLock()
+	activeTasks := len(s.active)
+	s.mu.RUnlock()
+
+	// Calculate load based on active tasks vs capacity
+	maxTasks := 10
+	if s.runtimeParams != nil {
+		maxTasks = s.runtimeParams.GetInt("max_concurrent_tasks", 10)
+	}
+
+	taskLoad := float64(activeTasks) / float64(maxTasks)
+
+	// If we have advanced behavior modifier, get real system metrics
+	if adaptiveMod, ok := s.behaviorMod.(*config.AdaptiveBehaviorModifier); ok {
+		return adaptiveMod.GetSystemLoad()
+	}
+
+	return taskLoad
+}
+
+// queueTask adds a task to the execution queue
+func (s *Service) queueTask(msg *types.InfoMessage, task *types.ComputationTask, executor types.TaskExecutor) {
+	s.queueMu.Lock()
+	defer s.queueMu.Unlock()
+
+	qTask := &queuedTask{
+		msg:      msg,
+		task:     task,
+		executor: executor,
+		queued:   time.Now(),
+	}
+
+	// Insert task in priority order (critical tasks first)
+	inserted := false
+	for i, existing := range s.taskQueue {
+		if s.getTaskPriority(task) > s.getTaskPriority(existing.task) {
+			// Insert before this task
+			s.taskQueue = append(s.taskQueue[:i], append([]*queuedTask{qTask}, s.taskQueue[i:]...)...)
+			inserted = true
+			break
+		}
+	}
+
+	if !inserted {
+		s.taskQueue = append(s.taskQueue, qTask)
+	}
+
+	log.Printf("Task %s queued (position %d, type: %s)", msg.ID, len(s.taskQueue), task.Type)
+}
+
+// getTaskPriority returns numeric priority for task scheduling
+func (s *Service) getTaskPriority(task *types.ComputationTask) int {
+	if s.behaviorMod != nil {
+		return s.behaviorMod.ModifyTaskPriority(task, 50) // Default priority 50
+	}
+
+	// Fallback priority assignment
+	switch task.Type {
+	case "safety", "emergency":
+		return 100
+	case "critical":
+		return 80
+	case "high":
+		return 60
+	case "normal":
+		return 50
+	case "background":
+		return 10
+	default:
+		return 30
+	}
+}
+
+// processTaskQueue processes queued tasks when load allows
+func (s *Service) processTaskQueue() {
+	s.queueMu.Lock()
+	defer s.queueMu.Unlock()
+
+	if len(s.taskQueue) == 0 {
+		return
+	}
+
+	systemLoad := s.getCurrentSystemLoad()
+
+	// Process high-priority tasks even under moderate load
+	for i := 0; i < len(s.taskQueue); i++ {
+		qTask := s.taskQueue[i]
+
+		shouldExecute := false
+		if s.behaviorMod != nil {
+			shouldExecute = s.behaviorMod.ShouldExecuteTask(qTask.task, systemLoad)
+		} else {
+			shouldExecute = systemLoad < 0.8 // Simple fallback
+		}
+
+		if shouldExecute {
+			// Remove from queue
+			s.taskQueue = append(s.taskQueue[:i], s.taskQueue[i+1:]...)
+			i-- // Adjust index after removal
+
+			// Mark as active
+			s.mu.Lock()
+			s.active[qTask.msg.ID] = &types.ComputationResult{
+				TaskID:     qTask.msg.ID,
+				TaskType:   qTask.task.Type,
+				ExecutedBy: s.nodeID,
+				Timestamp:  time.Now().Unix(),
+			}
+			s.mu.Unlock()
+
+			log.Printf("Task %s dequeued and starting execution (waited %v)",
+				qTask.msg.ID, time.Since(qTask.queued))
+
+			// Execute asynchronously
+			go s.executeTaskAsync(qTask.msg.ID, qTask.task, qTask.executor)
+
+			// Only process one task per cycle to avoid overwhelming the system
+			break
+		}
+	}
+}
+
+// taskQueueLoop periodically processes queued tasks
+func (s *Service) taskQueueLoop() {
+	ticker := time.NewTicker(5 * time.Second) // Check queue every 5 seconds
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			log.Printf("Task queue loop stopping for node %s", s.nodeID)
+			return
+		case <-ticker.C:
+			s.processTaskQueue()
+
+			// Update system metrics if we have advanced behavior modifier
+			if adaptiveMod, ok := s.behaviorMod.(*config.AdaptiveBehaviorModifier); ok {
+				s.updateSystemMetrics(adaptiveMod)
+			}
+		}
+	}
+}
+
+// updateSystemMetrics updates system performance metrics for adaptive behavior
+func (s *Service) updateSystemMetrics(adaptiveMod *config.AdaptiveBehaviorModifier) {
+	s.mu.RLock()
+	activeTasks := len(s.active)
+	s.mu.RUnlock()
+
+	s.queueMu.RLock()
+	queuedTasks := len(s.taskQueue)
+	s.queueMu.RUnlock()
+
+	// Simple CPU and memory usage estimation (would be better with real metrics)
+	cpuUsage := float64(activeTasks) / 10.0 // Assume max 10 tasks = 100% CPU
+	memoryUsage := cpuUsage * 0.8           // Assume similar memory usage pattern
+
+	// Update metrics in behavior modifier
+	adaptiveMod.UpdateSystemMetrics(cpuUsage, memoryUsage, activeTasks, queuedTasks)
 }
 
 // executeTaskAsync performs the actual task execution

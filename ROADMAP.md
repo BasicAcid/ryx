@@ -160,7 +160,7 @@ ryx-cluster chaos --kill 30%     # Test fault tolerance
 
 **Technical Implementation**:
 - `RuntimeParameters` struct with 20+ configurable system parameters
-- `DefaultBehaviorModifier` with message-type specific behavior  
+- `DefaultBehaviorModifier` with message-type specific behavior
 - `AdaptiveBehaviorModifier` with learning and adaptation capabilities
 - HTTP API: `/config` (GET/POST), `/config/{param}` (GET/PUT)
 - Full integration: Node → Diffusion → Behavior modification chain
@@ -193,7 +193,7 @@ ryx-cluster chaos --kill 30%     # Test fault tolerance
 
 **Status**: Provides foundation for mission-critical testing, but needs enhancement for physical systems
 
-#### Phase 3B: Self-Modification Core ⏳ NEXT (MISSION CRITICAL)
+#### Phase 3B: Self-Modification Core ✅ COMPLETE
 **Goal**: Enable autonomous system adaptation and learning for decades-long operation
 
 **Why Critical**: Spaceship systems must adapt to unpredictable failures and changing conditions without ground control
@@ -212,18 +212,82 @@ ryx-cluster chaos --kill 30%     # Test fault tolerance
 #### Phase 3C: Spatial-Physical Computing ⏳ PLANNED (SAFETY CRITICAL)
 **Goal**: Add physical location awareness for fault isolation and maintenance operations
 
-**Why Critical**: Physical fault boundaries prevent cascading failures in critical systems
+**Why Critical**: Physical fault boundaries prevent cascading failures in critical systems. Pure network topology cannot provide the physical fault isolation required for mission-critical applications like spaceship life support or industrial control systems.
 
-**Key deliverables**:
-- Physical coordinate system for nodes (3D spatial positioning)
-- Distance-based neighbor selection with fault isolation boundaries
-- Physical topology mapping and blast radius calculation
-- Spatial redundancy planning and automatic backup node assignment
-- Maintenance zone isolation (remove nodes without affecting neighbors)
-- Cable/connection reliability modeling based on physical distance
-- Emergency physical partitioning for damage control
+**Core Problem Solved**: Network neighbors ≠ Physical neighbors. A node 1 meter away through a firewall might have higher network latency than one 100 meters away, but physical proximity matters for fault isolation, maintenance operations, and emergency response.
 
-**Integration**: Hybrid spatial-logical topology for optimal performance and safety
+#### Phase 3C Sub-Phases (Manageable Implementation):
+
+**Phase 3C.1: Multi-Modal Coordinate Systems** (HIGH PRIORITY - Foundation)
+- **Flexible coordinate system support**: GPS, relative, logical, none
+- **GPS coordinates**: For fixed infrastructure (farms, data centers, smart cities)
+- **Relative coordinates**: For vehicles (ships, aircraft, cars) - relative to vehicle center
+- **Logical zones**: For cloud/virtual deployments or simple networks
+- **Backward compatibility**: Nodes without coordinates work normally
+
+**Examples**:
+```bash
+# Farm/Smart City (GPS coordinates)
+./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --z 10.5 --zone barn_1
+
+# Spaceship (relative to vessel center)
+./ryx-node --coord-system relative --x 15.2 --y -3.1 --z 2.8 --zone bridge
+
+# Cloud/Virtual (logical only)
+./ryx-node --coord-system logical --zone us-east-1a --rack 42
+
+# Development/Testing (no spatial awareness)
+./ryx-node --coord-system none --zone development
+```
+
+**Phase 3C.2: Distance-Based Neighbor Selection** (HIGH PRIORITY - Core Value)
+- **Physical proximity preference**: Nodes favor physically nearby neighbors
+- **Hybrid spatial-logical topology**: Balance physical proximity with network performance
+- **Coordinate system aware**: GPS uses real distance, relative uses vessel-local distance
+- **Fault isolation boundaries**: Respect physical barriers (firewalls, bulkheads, zones)
+
+**Phase 3C.3: Physical Topology Discovery** (HIGH PRIORITY - Safety)
+- **Distributed spatial awareness**: No central authority - emerges through neighbor discovery
+- **Organic topology building**: Spatial intelligence through local neighbor interactions
+- **Physical barrier detection**: Automatically discover walls, compartments, fire zones
+- **Blast radius calculation**: Determine fault containment boundaries
+
+**Phase 3C.4: Spatial Redundancy Planning** (MEDIUM PRIORITY - Reliability)
+- **Cross-zone redundancy**: Critical data replicated across physical zones
+- **Backup node assignment**: Automatic backup selection in different physical areas
+- **Spatial distribution validation**: Ensure critical systems aren't co-located
+
+**Phase 3C.5: Maintenance Zone Isolation** (MEDIUM PRIORITY - Operations)
+- **Safe node removal**: Remove nodes without affecting physically distant neighbors
+- **Hot-swap spatial awareness**: Add nodes with optimal physical placement
+- **Maintenance impact analysis**: Predict which nodes affected by maintenance operations
+
+**Phase 3C.6: Emergency Physical Partitioning** (LOW PRIORITY - Crisis Response)
+- **Damage control protocols**: Isolate damaged physical areas automatically
+- **Emergency network partitioning**: Continue operation in undamaged zones
+- **Crisis communication**: Ensure emergency messages route around physical damage
+
+**Mission-Critical Use Cases**:
+
+**Spaceship Engine Explosion Scenario**:
+```
+Engine Bay 1: Coordinates (0-10, 0-5, 0-3) - DAMAGED
+Engine Bay 2: Coordinates (0-10, 20-25, 0-3) - SAFE
+Fire barrier at Y=12.5
+
+With spatial awareness: Nodes automatically isolate Bay 1, keep Bay 2 operational
+Without spatial awareness: Network partitioning might randomly affect both bays
+```
+
+**Vehicle Collision Example**:
+```
+Car front sensors: X: +2.0 to +2.5 (damaged in collision)
+Car rear systems: X: -2.0 to -1.5 (continue operating)
+
+Spatial awareness ensures rear systems continue operation despite front damage
+```
+
+**Integration**: Hybrid spatial-logical topology using distributed discovery - no global coordination required, maintaining Ackley's robust computing principles
 
 ### Phase 4: Chemistry-Based Computing Engine ⏳ PLANNED (RELIABILITY CRITICAL)
 **Goal**: Implement chemical reaction model for autonomous system immune responses
@@ -527,7 +591,7 @@ go build -o ryx-cluster ./cmd/ryx-cluster
 curl -X POST localhost:8010/inject -H "Content-Type: application/json" \
   -d '{"type": "critical", "content": "Emergency alert", "energy": 5, "ttl": 3600}'
 
-# Routine message (lives 1/2 as long)  
+# Routine message (lives 1/2 as long)
 curl -X POST localhost:8010/inject -H "Content-Type: application/json" \
   -d '{"type": "routine", "content": "Status update", "energy": 5, "ttl": 3600}'
 

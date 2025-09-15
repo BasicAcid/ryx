@@ -83,6 +83,12 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/config/", s.handleConfigParameter)
 
+	// Phase 3B: Advanced adaptive algorithm monitoring
+	mux.HandleFunc("/adaptive/metrics", s.handleAdaptiveMetrics)
+	mux.HandleFunc("/adaptive/neighbors", s.handleNeighborMetrics)
+	mux.HandleFunc("/adaptive/faults", s.handleFaultPatterns)
+	mux.HandleFunc("/adaptive/system", s.handleSystemMetrics)
+
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
 		Handler: s.enableCORS(mux),
@@ -619,4 +625,158 @@ func (s *Server) enableCORS(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// Phase 3B: Advanced adaptive algorithm monitoring endpoints
+
+// handleAdaptiveMetrics returns comprehensive metrics from the adaptive behavior modifier
+func (s *Server) handleAdaptiveMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	behaviorMod := s.node.GetBehaviorModifier()
+	if behaviorMod == nil {
+		http.Error(w, "Behavior modifier not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Try to cast to AdaptiveBehaviorModifier for advanced metrics
+	if adaptiveMod, ok := behaviorMod.(*config.AdaptiveBehaviorModifier); ok {
+		systemMetrics := adaptiveMod.GetSystemMetrics()
+
+		response := map[string]interface{}{
+			"success": true,
+			"metrics": map[string]interface{}{
+				"system":             systemMetrics,
+				"adaptation_enabled": true,
+				"adaptive_features":  []string{"network_aware_energy", "load_based_scheduling", "fault_learning", "neighbor_optimization"},
+				"timestamp":          time.Now().Unix(),
+			},
+		}
+		s.writeJSON(w, response)
+	} else {
+		// Basic behavior modifier
+		response := map[string]interface{}{
+			"success": true,
+			"metrics": map[string]interface{}{
+				"adaptation_enabled": false,
+				"behavior_type":      "default",
+				"timestamp":          time.Now().Unix(),
+			},
+		}
+		s.writeJSON(w, response)
+	}
+}
+
+// handleNeighborMetrics returns performance metrics for all neighbors
+func (s *Server) handleNeighborMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	behaviorMod := s.node.GetBehaviorModifier()
+	if behaviorMod == nil {
+		http.Error(w, "Behavior modifier not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Get current neighbors
+	status := s.node.GetStatus()
+	neighbors, ok := status["neighbors"]
+	if !ok {
+		neighbors = []interface{}{}
+	}
+
+	response := map[string]interface{}{
+		"success":   true,
+		"neighbors": neighbors,
+	}
+
+	// Add performance metrics if available
+	if adaptiveMod, ok := behaviorMod.(*config.AdaptiveBehaviorModifier); ok {
+		neighborMetrics := make(map[string]interface{})
+
+		// Get metrics for each neighbor
+		if neighborList, ok := neighbors.([]*types.Neighbor); ok {
+			for _, neighbor := range neighborList {
+				metrics := adaptiveMod.GetNeighborMetrics(neighbor.NodeID)
+				neighborMetrics[neighbor.NodeID] = metrics
+			}
+		}
+
+		response["neighbor_metrics"] = neighborMetrics
+		response["advanced_metrics"] = true
+	} else {
+		response["advanced_metrics"] = false
+	}
+
+	s.writeJSON(w, response)
+}
+
+// handleFaultPatterns returns fault pattern learning data
+func (s *Server) handleFaultPatterns(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	behaviorMod := s.node.GetBehaviorModifier()
+	if behaviorMod == nil {
+		http.Error(w, "Behavior modifier not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	response := map[string]interface{}{
+		"success":                true,
+		"fault_learning_enabled": false,
+		"patterns":               make(map[string]interface{}),
+	}
+
+	// Add fault patterns if adaptive modifier is available
+	if _, ok := behaviorMod.(*config.AdaptiveBehaviorModifier); ok {
+		// Get fault patterns (this would require exposing the faultPatterns field)
+		response["fault_learning_enabled"] = true
+		response["message"] = "Fault pattern learning is active"
+
+		// For now, just return that it's enabled
+		// In a full implementation, we'd expose the fault patterns
+	}
+
+	s.writeJSON(w, response)
+}
+
+// handleSystemMetrics returns current system performance metrics
+func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	behaviorMod := s.node.GetBehaviorModifier()
+	if behaviorMod == nil {
+		http.Error(w, "Behavior modifier not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	response := map[string]interface{}{
+		"success":   true,
+		"timestamp": time.Now().Unix(),
+	}
+
+	// Add system metrics if adaptive modifier is available
+	if adaptiveMod, ok := behaviorMod.(*config.AdaptiveBehaviorModifier); ok {
+		systemMetrics := adaptiveMod.GetSystemMetrics()
+		response["system_metrics"] = systemMetrics
+		response["load_trend"] = adaptiveMod.GetLoadTrend()
+		response["current_load"] = adaptiveMod.GetSystemLoad()
+	} else {
+		response["system_metrics"] = map[string]interface{}{
+			"message": "Advanced system metrics not available with default behavior modifier",
+		}
+	}
+
+	s.writeJSON(w, response)
 }

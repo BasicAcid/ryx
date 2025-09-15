@@ -1,6 +1,8 @@
 package config
 
 import (
+	"math"
+	"sync"
 	"time"
 
 	"github.com/BasicAcid/ryx/internal/types"
@@ -186,6 +188,26 @@ func (d *DefaultBehaviorModifier) ShouldCleanupMessage(msg *types.InfoMessage, s
 	return time.Now().Unix() > msg.TTL
 }
 
+// SystemMetrics tracks real-time system performance
+type SystemMetrics struct {
+	CPUUsage       float64          `json:"cpu_usage"`
+	MemoryUsage    float64          `json:"memory_usage"`
+	ActiveTasks    int              `json:"active_tasks"`
+	MessageLoad    int              `json:"message_load"`
+	NetworkLatency map[string]int64 `json:"network_latency"` // nodeID -> latency_ms
+	Timestamp      time.Time        `json:"timestamp"`
+}
+
+// FaultPattern tracks failure patterns for adaptive routing
+type FaultPattern struct {
+	NodeID        string         `json:"node_id"`
+	FailureTypes  map[string]int `json:"failure_types"` // message_type -> failure_count
+	TotalFailures int            `json:"total_failures"`
+	LastFailure   time.Time      `json:"last_failure"`
+	RecoveryTests []time.Time    `json:"recovery_tests"`
+	SuccessRate   float64        `json:"success_rate"`
+}
+
 // AdaptiveBehaviorModifier extends the default with learning capabilities
 type AdaptiveBehaviorModifier struct {
 	*DefaultBehaviorModifier
@@ -195,6 +217,15 @@ type AdaptiveBehaviorModifier struct {
 	messageSuccessRates map[string]float64
 	adaptationEnabled   bool
 	lastModification    time.Time
+
+	// Advanced Phase 3B features
+	systemMetrics       *SystemMetrics
+	faultPatterns       map[string]*FaultPattern
+	neighborLatency     map[string][]int64   // nodeID -> latency samples (sliding window)
+	neighborReliability map[string]float64   // nodeID -> success rate
+	loadHistory         []float64            // sliding window of system load
+	adaptationHistory   map[string][]float64 // parameter -> historical values
+	metricsLock         sync.RWMutex
 }
 
 // NewAdaptiveBehaviorModifier creates an adaptive behavior modifier
@@ -205,6 +236,14 @@ func NewAdaptiveBehaviorModifier(params *RuntimeParameters) *AdaptiveBehaviorMod
 		messageSuccessRates:     make(map[string]float64),
 		adaptationEnabled:       params.GetBool("adaptation_enabled", true),
 		lastModification:        time.Now(),
+
+		// Advanced Phase 3B features
+		systemMetrics:       &SystemMetrics{Timestamp: time.Now()},
+		faultPatterns:       make(map[string]*FaultPattern),
+		neighborLatency:     make(map[string][]int64),
+		neighborReliability: make(map[string]float64),
+		loadHistory:         make([]float64, 0, 100), // 100-sample sliding window
+		adaptationHistory:   make(map[string][]float64),
 	}
 }
 
@@ -242,4 +281,508 @@ func (a *AdaptiveBehaviorModifier) RecordNeighborPerformance(nodeID string, late
 	} else {
 		a.neighborPerformance[nodeID] = performance
 	}
+
+	// Phase 3B: Record latency and reliability metrics
+	a.recordLatencyMetric(nodeID, latency)
+	a.updateReliabilityMetric(nodeID, success)
+}
+
+// Phase 3B: Advanced network-aware adaptation methods
+
+// recordLatencyMetric adds latency sample to sliding window
+func (a *AdaptiveBehaviorModifier) recordLatencyMetric(nodeID string, latency time.Duration) {
+	a.metricsLock.Lock()
+	defer a.metricsLock.Unlock()
+
+	latencyMs := latency.Milliseconds()
+	samples := a.neighborLatency[nodeID]
+
+	// Maintain sliding window of last 20 samples
+	if len(samples) >= 20 {
+		samples = samples[1:]
+	}
+	samples = append(samples, latencyMs)
+	a.neighborLatency[nodeID] = samples
+}
+
+// updateReliabilityMetric updates success rate using exponential moving average
+func (a *AdaptiveBehaviorModifier) updateReliabilityMetric(nodeID string, success bool) {
+	a.metricsLock.Lock()
+	defer a.metricsLock.Unlock()
+
+	successValue := 0.0
+	if success {
+		successValue = 1.0
+	}
+
+	if existing, exists := a.neighborReliability[nodeID]; exists {
+		alpha := a.params.GetFloat64("learning_rate", 0.1)
+		a.neighborReliability[nodeID] = alpha*successValue + (1-alpha)*existing
+	} else {
+		a.neighborReliability[nodeID] = successValue
+	}
+}
+
+// getAverageLatency calculates average latency for a neighbor
+func (a *AdaptiveBehaviorModifier) getAverageLatency(nodeID string) float64 {
+	a.metricsLock.RLock()
+	defer a.metricsLock.RUnlock()
+
+	samples := a.neighborLatency[nodeID]
+	if len(samples) == 0 {
+		return 100.0 // Default 100ms if no data
+	}
+
+	var sum int64
+	for _, sample := range samples {
+		sum += sample
+	}
+	return float64(sum) / float64(len(samples))
+}
+
+// getSuccessRate returns success rate for a neighbor
+func (a *AdaptiveBehaviorModifier) getSuccessRate(nodeID string) float64 {
+	a.metricsLock.RLock()
+	defer a.metricsLock.RUnlock()
+
+	if rate, exists := a.neighborReliability[nodeID]; exists {
+		return rate
+	}
+	return 0.95 // Default 95% success rate if no data
+}
+
+// Phase 3B: Enhanced network-aware energy decay with target neighbor awareness
+func (a *AdaptiveBehaviorModifier) ModifyEnergyDecayForNeighbor(msg *types.InfoMessage, currentDecay float64, targetNeighbor string) float64 {
+	if !a.adaptationEnabled {
+		return a.DefaultBehaviorModifier.ModifyEnergyDecay(msg, currentDecay)
+	}
+
+	// Get base decay from default behavior
+	baseDecay := a.DefaultBehaviorModifier.ModifyEnergyDecay(msg, currentDecay)
+
+	// Phase 3B: Network-aware adaptation
+	neighborLatency := a.getAverageLatency(targetNeighbor)
+	neighborSuccessRate := a.getSuccessRate(targetNeighbor)
+
+	// Calculate adaptive factors
+	// Latency penalty: High latency neighbors get higher energy decay (max 2x)
+	latencyPenalty := math.Min(neighborLatency/500.0, 2.0) // 500ms baseline, max 2x penalty
+
+	// Reliability penalty: Unreliable neighbors get higher energy decay
+	reliabilityPenalty := (1.0 - neighborSuccessRate) * 1.5 // Max 1.5x penalty for 0% success
+
+	// Network adaptation factor
+	networkFactor := 1.0 + latencyPenalty*0.3 + reliabilityPenalty*0.4
+
+	// Apply adaptive energy decay
+	adaptiveDecay := baseDecay * networkFactor
+
+	// Ensure reasonable bounds (0.1 to 5.0)
+	adaptiveDecay = math.Max(0.1, math.Min(5.0, adaptiveDecay))
+
+	return adaptiveDecay
+}
+
+// Phase 3B: Fault pattern learning and adaptive routing
+
+// RecordCommunicationFailure records a failure for fault pattern learning
+func (a *AdaptiveBehaviorModifier) RecordCommunicationFailure(nodeID string, messageType string, failureReason string) {
+	if !a.adaptationEnabled {
+		return
+	}
+
+	a.metricsLock.Lock()
+	defer a.metricsLock.Unlock()
+
+	pattern, exists := a.faultPatterns[nodeID]
+	if !exists {
+		pattern = &FaultPattern{
+			NodeID:       nodeID,
+			FailureTypes: make(map[string]int),
+			SuccessRate:  0.95, // Start with optimistic assumption
+		}
+		a.faultPatterns[nodeID] = pattern
+	}
+
+	// Record failure by message type
+	pattern.FailureTypes[messageType]++
+	pattern.TotalFailures++
+	pattern.LastFailure = time.Now()
+
+	// Update success rate with exponential moving average
+	alpha := a.params.GetFloat64("learning_rate", 0.1)
+	pattern.SuccessRate = (1-alpha)*pattern.SuccessRate + alpha*0.0 // Failure = 0.0
+}
+
+// RecordCommunicationSuccess records successful communication
+func (a *AdaptiveBehaviorModifier) RecordCommunicationSuccess(nodeID string) {
+	if !a.adaptationEnabled {
+		return
+	}
+
+	a.metricsLock.Lock()
+	defer a.metricsLock.Unlock()
+
+	pattern, exists := a.faultPatterns[nodeID]
+	if !exists {
+		pattern = &FaultPattern{
+			NodeID:       nodeID,
+			FailureTypes: make(map[string]int),
+			SuccessRate:  0.95,
+		}
+		a.faultPatterns[nodeID] = pattern
+	}
+
+	// Update success rate with exponential moving average
+	alpha := a.params.GetFloat64("learning_rate", 0.1)
+	pattern.SuccessRate = (1-alpha)*pattern.SuccessRate + alpha*1.0 // Success = 1.0
+}
+
+// Enhanced forwarding decision with fault pattern awareness
+func (a *AdaptiveBehaviorModifier) ModifyForwardingDecision(msg *types.InfoMessage, neighbor *types.Neighbor) bool {
+	// Use default behavior first
+	if !a.DefaultBehaviorModifier.ModifyForwardingDecision(msg, neighbor) {
+		return false
+	}
+
+	if !a.adaptationEnabled {
+		return true
+	}
+
+	// Phase 3B: Fault-aware forwarding
+	a.metricsLock.RLock()
+	pattern, exists := a.faultPatterns[neighbor.NodeID]
+	a.metricsLock.RUnlock()
+
+	if !exists {
+		return true // No failure history, proceed
+	}
+
+	// Critical messages always try (mission-critical requirement)
+	if msg.Type == "critical" || msg.Type == "emergency" || msg.Type == "safety" {
+		return true
+	}
+
+	// Check recent failure patterns for this message type
+	recentFailures := pattern.FailureTypes[msg.Type]
+	timeSinceLastFailure := time.Since(pattern.LastFailure)
+
+	// Adaptive routing logic
+	if recentFailures > 3 && timeSinceLastFailure < 5*time.Minute {
+		// Route around consistently failing nodes for non-critical messages
+		return false
+	}
+
+	// Check overall success rate
+	if pattern.SuccessRate < 0.5 && timeSinceLastFailure < 2*time.Minute {
+		// Skip unreliable neighbors for routine messages
+		return msg.Type == "critical" || msg.Type == "emergency"
+	}
+
+	return true
+}
+
+// Phase 3B: System load monitoring and adaptive parameter tuning
+
+// UpdateSystemMetrics updates current system performance metrics
+func (a *AdaptiveBehaviorModifier) UpdateSystemMetrics(cpuUsage, memoryUsage float64, activeTasks, messageLoad int) {
+	a.metricsLock.Lock()
+	defer a.metricsLock.Unlock()
+
+	a.systemMetrics.CPUUsage = cpuUsage
+	a.systemMetrics.MemoryUsage = memoryUsage
+	a.systemMetrics.ActiveTasks = activeTasks
+	a.systemMetrics.MessageLoad = messageLoad
+	a.systemMetrics.Timestamp = time.Now()
+
+	// Update load history for trending analysis
+	currentLoad := math.Max(cpuUsage, memoryUsage) // Overall system load
+	if len(a.loadHistory) >= 100 {
+		a.loadHistory = a.loadHistory[1:] // Remove oldest
+	}
+	a.loadHistory = append(a.loadHistory, currentLoad)
+}
+
+// GetSystemLoad returns current system load (0.0 to 1.0)
+func (a *AdaptiveBehaviorModifier) GetSystemLoad() float64 {
+	a.metricsLock.RLock()
+	defer a.metricsLock.RUnlock()
+
+	return math.Max(a.systemMetrics.CPUUsage, a.systemMetrics.MemoryUsage)
+}
+
+// GetLoadTrend returns load trend (-1.0 to 1.0, negative = decreasing load)
+func (a *AdaptiveBehaviorModifier) GetLoadTrend() float64 {
+	a.metricsLock.RLock()
+	defer a.metricsLock.RUnlock()
+
+	if len(a.loadHistory) < 10 {
+		return 0.0 // Not enough data
+	}
+
+	// Simple trend calculation: compare recent average with older average
+	recentCount := 5
+	recent := a.loadHistory[len(a.loadHistory)-recentCount:]
+	older := a.loadHistory[len(a.loadHistory)-2*recentCount : len(a.loadHistory)-recentCount]
+
+	recentAvg := average(recent)
+	olderAvg := average(older)
+
+	// Normalize trend to -1.0 to 1.0 range
+	trend := (recentAvg - olderAvg) / math.Max(olderAvg, 0.1)
+	return math.Max(-1.0, math.Min(1.0, trend))
+}
+
+// Enhanced task execution decision with load-based scheduling
+func (a *AdaptiveBehaviorModifier) ShouldExecuteTask(task *types.ComputationTask, systemLoad float64) bool {
+	// Use default behavior first
+	if !a.DefaultBehaviorModifier.ShouldExecuteTask(task, systemLoad) {
+		return false
+	}
+
+	if !a.adaptationEnabled {
+		return true
+	}
+
+	// Phase 3B: Advanced load-based scheduling
+	currentLoad := a.GetSystemLoad()
+	loadTrend := a.GetLoadTrend()
+
+	// Mission-critical tasks always execute
+	if task.Type == "critical" || task.Type == "emergency" || task.Type == "safety" {
+		return true
+	}
+
+	// Adaptive scheduling based on load and trend
+	loadThreshold := a.params.GetFloat64("load_balancing_threshold", 0.8)
+
+	// Adjust threshold based on load trend
+	if loadTrend > 0.5 { // Load increasing rapidly
+		loadThreshold -= 0.1 // Be more conservative
+	} else if loadTrend < -0.5 { // Load decreasing rapidly
+		loadThreshold += 0.1 // Be more aggressive
+	}
+
+	// High-priority tasks get preference under moderate load
+	if currentLoad < loadThreshold*1.2 && task.Type == "high" {
+		return true
+	}
+
+	// Normal and background tasks wait if system is stressed
+	if currentLoad > loadThreshold {
+		return false
+	}
+
+	return true
+}
+
+// Adaptive cleanup interval based on system load and memory pressure
+func (a *AdaptiveBehaviorModifier) ModifyCleanupInterval(currentInterval time.Duration, systemLoad float64) time.Duration {
+	baseInterval := a.DefaultBehaviorModifier.ModifyCleanupInterval(currentInterval, systemLoad)
+
+	if !a.adaptationEnabled {
+		return baseInterval
+	}
+
+	// Phase 3B: Advanced cleanup adaptation
+	memoryPressure := a.systemMetrics.MemoryUsage
+	loadTrend := a.GetLoadTrend()
+
+	// Base adaptation factor
+	adaptationFactor := 1.0
+
+	// Memory pressure factor
+	if memoryPressure > 0.9 {
+		adaptationFactor *= 0.3 // Clean 3x more frequently
+	} else if memoryPressure > 0.8 {
+		adaptationFactor *= 0.5 // Clean 2x more frequently
+	} else if memoryPressure < 0.3 {
+		adaptationFactor *= 2.0 // Clean half as frequently
+	}
+
+	// Load trend factor
+	if loadTrend > 0.7 { // Load increasing rapidly
+		adaptationFactor *= 0.7 // Clean more frequently to free resources
+	}
+
+	// Message load factor
+	if a.systemMetrics.MessageLoad > 1000 {
+		adaptationFactor *= 0.6 // High message volume needs frequent cleanup
+	}
+
+	adaptedInterval := time.Duration(float64(baseInterval) * adaptationFactor)
+
+	// Ensure reasonable bounds (5 seconds to 10 minutes)
+	minInterval := 5 * time.Second
+	maxInterval := 10 * time.Minute
+	return time.Duration(math.Max(float64(minInterval), math.Min(float64(maxInterval), float64(adaptedInterval))))
+}
+
+// Phase 3B: Performance-based neighbor selection and topology optimization
+
+// CalculateNeighborScore computes a composite score for neighbor quality
+func (a *AdaptiveBehaviorModifier) CalculateNeighborScore(neighborID string) float64 {
+	if !a.adaptationEnabled {
+		return 0.7 // Default neutral score
+	}
+
+	a.metricsLock.RLock()
+	defer a.metricsLock.RUnlock()
+
+	// Get metrics (with defaults for new neighbors)
+	performance := a.neighborPerformance[neighborID]
+	if performance == 0 {
+		performance = 0.5 // Neutral starting point
+	}
+
+	latency := a.getAverageLatency(neighborID)
+	if latency == 0 {
+		latency = 100.0 // Default 100ms
+	}
+
+	reliability := a.getSuccessRate(neighborID)
+
+	// Normalize latency to 0-1 scale (lower latency = higher score)
+	// Assume 1000ms is very poor, 10ms is excellent
+	latencyScore := math.Max(0.0, math.Min(1.0, 1.0-(latency-10.0)/990.0))
+
+	// Composite score: performance (40%) + latency (30%) + reliability (30%)
+	score := 0.4*performance + 0.3*latencyScore + 0.3*reliability
+
+	// Ensure score is in valid range
+	return math.Max(0.0, math.Min(1.0, score))
+}
+
+// ShouldAddNeighbor with performance-based evaluation
+func (a *AdaptiveBehaviorModifier) ShouldAddNeighbor(candidate *types.Neighbor, currentNeighbors []*types.Neighbor) bool {
+	// Use default behavior first
+	if !a.DefaultBehaviorModifier.ShouldAddNeighbor(candidate, currentNeighbors) {
+		return false
+	}
+
+	if !a.adaptationEnabled {
+		return true
+	}
+
+	maxNeighbors := a.params.GetInt("max_neighbors", 8)
+
+	// If we're not at capacity, add the neighbor
+	if len(currentNeighbors) < maxNeighbors {
+		return true
+	}
+
+	// Phase 3B: Performance-based replacement
+	candidateScore := a.CalculateNeighborScore(candidate.NodeID)
+
+	// Find the worst performing current neighbor
+	worstScore := 1.0
+	for _, neighbor := range currentNeighbors {
+		score := a.CalculateNeighborScore(neighbor.NodeID)
+		if score < worstScore {
+			worstScore = score
+		}
+	}
+
+	// Replace worst neighbor if candidate is significantly better
+	improvementThreshold := 0.2 // Require 20% improvement
+	return candidateScore > worstScore+improvementThreshold
+}
+
+// ShouldRemoveNeighbor with performance-based evaluation
+func (a *AdaptiveBehaviorModifier) ShouldRemoveNeighbor(neighbor *types.Neighbor, reason string) bool {
+	// Use default behavior first
+	if a.DefaultBehaviorModifier.ShouldRemoveNeighbor(neighbor, reason) {
+		return true
+	}
+
+	if !a.adaptationEnabled {
+		return false
+	}
+
+	// Phase 3B: Performance-based removal
+	score := a.CalculateNeighborScore(neighbor.NodeID)
+
+	// Remove consistently poor performers
+	if score < 0.3 && reason == "poor_performance" {
+		return true
+	}
+
+	// Check fault patterns
+	a.metricsLock.RLock()
+	pattern, exists := a.faultPatterns[neighbor.NodeID]
+	a.metricsLock.RUnlock()
+
+	if exists {
+		// Remove neighbors with very low success rate
+		if pattern.SuccessRate < 0.2 {
+			return true
+		}
+
+		// Remove neighbors with excessive recent failures
+		if pattern.TotalFailures > 20 && time.Since(pattern.LastFailure) < 1*time.Minute {
+			return true
+		}
+	}
+
+	return false
+}
+
+// GetNeighborMetrics returns comprehensive metrics for a neighbor (for monitoring/debugging)
+func (a *AdaptiveBehaviorModifier) GetNeighborMetrics(neighborID string) map[string]interface{} {
+	a.metricsLock.RLock()
+	defer a.metricsLock.RUnlock()
+
+	metrics := map[string]interface{}{
+		"node_id": neighborID,
+		"score":   a.CalculateNeighborScore(neighborID),
+	}
+
+	if performance, exists := a.neighborPerformance[neighborID]; exists {
+		metrics["performance"] = performance
+	}
+
+	if samples := a.neighborLatency[neighborID]; len(samples) > 0 {
+		metrics["average_latency_ms"] = a.getAverageLatency(neighborID)
+		metrics["latency_samples"] = len(samples)
+	}
+
+	if reliability, exists := a.neighborReliability[neighborID]; exists {
+		metrics["reliability"] = reliability
+	}
+
+	if pattern, exists := a.faultPatterns[neighborID]; exists {
+		metrics["total_failures"] = pattern.TotalFailures
+		metrics["success_rate"] = pattern.SuccessRate
+		metrics["last_failure"] = pattern.LastFailure
+	}
+
+	return metrics
+}
+
+// GetSystemMetrics returns current system performance metrics (for monitoring/debugging)
+func (a *AdaptiveBehaviorModifier) GetSystemMetrics() map[string]interface{} {
+	a.metricsLock.RLock()
+	defer a.metricsLock.RUnlock()
+
+	return map[string]interface{}{
+		"cpu_usage":         a.systemMetrics.CPUUsage,
+		"memory_usage":      a.systemMetrics.MemoryUsage,
+		"active_tasks":      a.systemMetrics.ActiveTasks,
+		"message_load":      a.systemMetrics.MessageLoad,
+		"load_trend":        a.GetLoadTrend(),
+		"timestamp":         a.systemMetrics.Timestamp,
+		"load_history_size": len(a.loadHistory),
+	}
+}
+
+// Helper function to calculate average of float64 slice
+func average(values []float64) float64 {
+	if len(values) == 0 {
+		return 0.0
+	}
+	sum := 0.0
+	for _, v := range values {
+		sum += v
+	}
+	return sum / float64(len(values))
 }

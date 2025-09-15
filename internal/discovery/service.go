@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BasicAcid/ryx/internal/config"
 	"github.com/BasicAcid/ryx/internal/types"
 )
 
@@ -40,6 +41,10 @@ type Service struct {
 	mu        sync.RWMutex
 	ctx       context.Context
 	cancel    context.CancelFunc
+
+	// Phase 3B: Performance-based neighbor selection
+	runtimeParams *config.RuntimeParameters
+	behaviorMod   config.BehaviorModifier
 }
 
 // New creates a new discovery service
@@ -49,6 +54,20 @@ func New(port int, clusterID, nodeID string) (*Service, error) {
 		clusterID: clusterID,
 		nodeID:    nodeID,
 		neighbors: make(map[string]*Neighbor),
+	}, nil
+}
+
+// NewWithConfig creates a discovery service with runtime configuration
+func NewWithConfig(port int, clusterID, nodeID string, params *config.RuntimeParameters, behaviorMod config.BehaviorModifier) (*Service, error) {
+	return &Service{
+		port:      port,
+		clusterID: clusterID,
+		nodeID:    nodeID,
+		neighbors: make(map[string]*Neighbor),
+
+		// Phase 3B: Advanced configuration
+		runtimeParams: params,
+		behaviorMod:   behaviorMod,
 	}, nil
 }
 
@@ -78,6 +97,9 @@ func (s *Service) Start(ctx context.Context) error {
 
 	// Start cleanup routine
 	go s.cleanupLoop()
+
+	// Phase 3B: Start topology optimization routine
+	go s.topologyOptimizationLoop()
 
 	return nil
 }
@@ -165,16 +187,47 @@ func (s *Service) handleAnnouncement(data []byte, addr *net.UDPAddr) {
 
 	log.Printf("Discovered neighbor: %s at %s:%d", msg.NodeID, addr.IP, msg.Port)
 
-	// Add or update neighbor
-	s.mu.Lock()
-	s.neighbors[msg.NodeID] = &Neighbor{
+	// Phase 3B: Use behavior modifier for neighbor addition decisions
+	candidate := &types.Neighbor{
 		NodeID:    msg.NodeID,
 		Address:   addr.IP.String(),
 		Port:      msg.Port,
 		ClusterID: msg.ClusterID,
-		LastSeen:  time.Now(),
 	}
-	s.mu.Unlock()
+
+	currentNeighbors := s.GetNeighbors()
+	shouldAdd := true
+
+	if s.behaviorMod != nil {
+		shouldAdd = s.behaviorMod.ShouldAddNeighbor(candidate, currentNeighbors)
+	}
+
+	if shouldAdd {
+		s.mu.Lock()
+
+		// If we're at capacity and using advanced behavior, remove worst neighbor
+		maxNeighbors := 8
+		if s.runtimeParams != nil {
+			maxNeighbors = s.runtimeParams.GetInt("max_neighbors", 8)
+		}
+
+		if len(s.neighbors) >= maxNeighbors && s.behaviorMod != nil {
+			s.removeWorstNeighbor()
+		}
+
+		s.neighbors[msg.NodeID] = &Neighbor{
+			NodeID:    msg.NodeID,
+			Address:   addr.IP.String(),
+			Port:      msg.Port,
+			ClusterID: msg.ClusterID,
+			LastSeen:  time.Now(),
+		}
+		s.mu.Unlock()
+
+		log.Printf("Added neighbor %s (total: %d)", msg.NodeID, len(s.neighbors))
+	} else {
+		log.Printf("Neighbor %s rejected by behavior modifier", msg.NodeID)
+	}
 }
 
 // announceLoop periodically broadcasts our presence
@@ -262,6 +315,96 @@ func (s *Service) cleanup() {
 		if neighbor.LastSeen.Before(cutoff) {
 			log.Printf("Removing stale neighbor: %s", nodeID)
 			delete(s.neighbors, nodeID)
+		}
+	}
+}
+
+// Phase 3B: Performance-based topology optimization
+
+// topologyOptimizationLoop periodically optimizes neighbor topology
+func (s *Service) topologyOptimizationLoop() {
+	ticker := time.NewTicker(60 * time.Second) // Optimize every minute
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			log.Printf("Topology optimization loop stopping for node %s", s.nodeID)
+			return
+		case <-ticker.C:
+			s.optimizeTopology()
+		}
+	}
+}
+
+// optimizeTopology removes poor-performing neighbors and maintains optimal topology
+func (s *Service) optimizeTopology() {
+	if s.behaviorMod == nil {
+		return // No optimization without behavior modifier
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	minNeighbors := 3
+	if s.runtimeParams != nil {
+		minNeighbors = s.runtimeParams.GetInt("min_neighbors", 3)
+	}
+
+	// Don't optimize if we're at minimum capacity
+	if len(s.neighbors) <= minNeighbors {
+		return
+	}
+
+	// Find neighbors to remove based on performance
+	toRemove := make([]string, 0)
+
+	for nodeID, neighbor := range s.neighbors {
+		candidate := &types.Neighbor{
+			NodeID:    neighbor.NodeID,
+			Address:   neighbor.Address,
+			Port:      neighbor.Port,
+			ClusterID: neighbor.ClusterID,
+		}
+
+		if s.behaviorMod.ShouldRemoveNeighbor(candidate, "poor_performance") {
+			toRemove = append(toRemove, nodeID)
+		}
+	}
+
+	// Remove poor performers (but maintain minimum count)
+	for _, nodeID := range toRemove {
+		if len(s.neighbors) > minNeighbors {
+			log.Printf("Removing poor-performing neighbor: %s", nodeID)
+			delete(s.neighbors, nodeID)
+		}
+	}
+
+	log.Printf("Topology optimization completed. Current neighbors: %d", len(s.neighbors))
+}
+
+// removeWorstNeighbor removes the lowest-scoring neighbor to make room for a better one
+func (s *Service) removeWorstNeighbor() {
+	if len(s.neighbors) == 0 {
+		return
+	}
+
+	// Find neighbor with lowest score
+	worstScore := 1.0
+	worstNodeID := ""
+
+	if adaptiveMod, ok := s.behaviorMod.(*config.AdaptiveBehaviorModifier); ok {
+		for nodeID := range s.neighbors {
+			score := adaptiveMod.CalculateNeighborScore(nodeID)
+			if score < worstScore {
+				worstScore = score
+				worstNodeID = nodeID
+			}
+		}
+
+		if worstNodeID != "" {
+			log.Printf("Removing worst neighbor %s (score: %.3f) to make room", worstNodeID, worstScore)
+			delete(s.neighbors, worstNodeID)
 		}
 	}
 }
