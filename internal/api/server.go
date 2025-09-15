@@ -14,6 +14,7 @@ import (
 	"github.com/BasicAcid/ryx/internal/diffusion"
 	"github.com/BasicAcid/ryx/internal/discovery"
 	"github.com/BasicAcid/ryx/internal/spatial"
+	"github.com/BasicAcid/ryx/internal/topology"
 	"github.com/BasicAcid/ryx/internal/types"
 )
 
@@ -54,6 +55,11 @@ type SpatialProvider interface {
 	IsPathBlocked(to *spatial.SpatialConfig, messageType string) bool
 }
 
+// TopologyProvider interface for accessing network topology information
+type TopologyProvider interface {
+	GetTopologyMapper() *topology.TopologyMapper
+}
+
 // NodeProvider combines all interfaces
 type NodeProvider interface {
 	NodeStatusProvider
@@ -62,6 +68,7 @@ type NodeProvider interface {
 	ConfigurationProvider
 	DiscoveryProvider
 	SpatialProvider
+	TopologyProvider
 }
 
 // Server provides HTTP API for node control and status
@@ -112,6 +119,11 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/spatial/neighbors", s.handleSpatialNeighbors)
 	mux.HandleFunc("/spatial/barriers", s.handleSpatialBarriers)
 	mux.HandleFunc("/spatial/distance", s.handleSpatialDistance)
+
+	// Phase 3C.3a: Topology mapping endpoints
+	mux.HandleFunc("/topology/map", s.handleTopologyMap)
+	mux.HandleFunc("/topology/zones", s.handleTopologyZones)
+	mux.HandleFunc("/topology/live", s.handleTopologyLive)
 
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
@@ -1026,5 +1038,129 @@ func (s *Server) handleSpatialDistance(w http.ResponseWriter, r *http.Request) {
 		"message_type": "routine",
 	}
 
+	s.writeJSON(w, response)
+}
+
+// handleTopologyMap handles GET requests for complete network topology
+func (s *Server) handleTopologyMap(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	log.Printf("handleTopologyMap: getting network topology")
+
+	topologyMapper := s.node.GetTopologyMapper()
+	if topologyMapper == nil {
+		log.Printf("handleTopologyMap: topology mapper not available")
+		http.Error(w, "Topology mapper not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	topology, err := topologyMapper.GetCurrentTopology()
+	if err != nil {
+		log.Printf("handleTopologyMap: failed to get topology: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to get topology: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("handleTopologyMap: topology generated - %d nodes, %d connections, %d zones, %d barriers",
+		topology.Metadata.NodeCount,
+		topology.Metadata.ConnectionCount,
+		topology.Metadata.ZoneCount,
+		topology.Metadata.BarrierCount)
+
+	s.writeJSON(w, topology)
+}
+
+// handleTopologyZones handles GET requests for zone-specific topology information
+func (s *Server) handleTopologyZones(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	log.Printf("handleTopologyZones: getting zone topology information")
+
+	topologyMapper := s.node.GetTopologyMapper()
+	if topologyMapper == nil {
+		log.Printf("handleTopologyZones: topology mapper not available")
+		http.Error(w, "Topology mapper not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Check if specific zone requested
+	zoneID := r.URL.Query().Get("zone")
+	if zoneID != "" {
+		log.Printf("handleTopologyZones: getting topology for zone: %s", zoneID)
+
+		zone, err := topologyMapper.GetZoneTopology(zoneID)
+		if err != nil {
+			log.Printf("handleTopologyZones: failed to get zone topology: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to get zone topology: %v", err), http.StatusNotFound)
+			return
+		}
+
+		response := map[string]interface{}{
+			"zone":      zone,
+			"requested": zoneID,
+		}
+		s.writeJSON(w, response)
+		return
+	}
+
+	// Get all zones
+	topology, err := topologyMapper.GetCurrentTopology()
+	if err != nil {
+		log.Printf("handleTopologyZones: failed to get topology: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to get topology: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"zones":        topology.Zones,
+		"zone_count":   len(topology.Zones),
+		"generated_at": topology.Metadata.GeneratedAt,
+	}
+
+	log.Printf("handleTopologyZones: returning %d zones", len(topology.Zones))
+	s.writeJSON(w, response)
+}
+
+// handleTopologyLive handles WebSocket connections for live topology updates
+func (s *Server) handleTopologyLive(w http.ResponseWriter, r *http.Request) {
+	// For Phase 3C.3a, we'll implement a simple HTTP-based polling endpoint
+	// WebSocket implementation can be added in a future enhancement
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	log.Printf("handleTopologyLive: providing live topology update")
+
+	topologyMapper := s.node.GetTopologyMapper()
+	if topologyMapper == nil {
+		log.Printf("handleTopologyLive: topology mapper not available")
+		http.Error(w, "Topology mapper not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	topology, err := topologyMapper.GetCurrentTopology()
+	if err != nil {
+		log.Printf("handleTopologyLive: failed to get topology: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to get topology: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Add live update metadata
+	response := map[string]interface{}{
+		"topology":              topology,
+		"live_update":           true,
+		"poll_interval_seconds": 5,     // Recommend polling every 5 seconds
+		"supports_websocket":    false, // Future enhancement
+	}
+
+	log.Printf("handleTopologyLive: live topology update provided")
 	s.writeJSON(w, response)
 }

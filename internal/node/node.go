@@ -16,6 +16,7 @@ import (
 	"github.com/BasicAcid/ryx/internal/diffusion"
 	"github.com/BasicAcid/ryx/internal/discovery"
 	"github.com/BasicAcid/ryx/internal/spatial"
+	"github.com/BasicAcid/ryx/internal/topology"
 )
 
 // Config holds node configuration
@@ -45,6 +46,9 @@ type Node struct {
 
 	// Phase 3C.1: Spatial awareness
 	barrierManager *spatial.BarrierManager
+
+	// Phase 3C.3a: Topology mapping
+	topologyMapper *topology.TopologyMapper
 
 	mu      sync.RWMutex
 	running bool
@@ -104,6 +108,9 @@ func New(cfg *Config) (*Node, error) {
 
 	// Initialize computation service with load-based optimization
 	node.computation = computation.NewWithConfig(nodeID, runtimeParams, behaviorMod)
+
+	// Phase 3C.3a: Initialize topology mapper
+	node.topologyMapper = topology.NewTopologyMapper(node)
 
 	node.api, err = api.New(cfg.HTTPPort, node)
 	if err != nil {
@@ -359,6 +366,26 @@ func (n *Node) GetDiscoveryService() *discovery.Service {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 	return n.discovery
+}
+
+// GetNodeID returns the node identifier
+func (n *Node) GetNodeID() string {
+	return n.id
+}
+
+// GetClusterID returns the cluster identifier
+func (n *Node) GetClusterID() string {
+	if n.config == nil {
+		return ""
+	}
+	return n.config.ClusterID
+}
+
+// GetTopologyMapper returns the topology mapper for API access
+func (n *Node) GetTopologyMapper() *topology.TopologyMapper {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.topologyMapper
 }
 
 // generateNodeID creates a random node identifier
