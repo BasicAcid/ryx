@@ -12,6 +12,7 @@ import (
 	"github.com/BasicAcid/ryx/internal/computation"
 	"github.com/BasicAcid/ryx/internal/config"
 	"github.com/BasicAcid/ryx/internal/diffusion"
+	"github.com/BasicAcid/ryx/internal/spatial"
 	"github.com/BasicAcid/ryx/internal/types"
 )
 
@@ -38,12 +39,22 @@ type ConfigurationProvider interface {
 	UpdateParameters(updates map[string]interface{}) map[string]bool
 }
 
+// SpatialProvider interface for accessing spatial configuration and barriers
+type SpatialProvider interface {
+	GetSpatialConfig() *spatial.SpatialConfig
+	UpdateSpatialConfig(config *spatial.SpatialConfig) error
+	GetBarrierManager() *spatial.BarrierManager
+	CalculateDistanceTo(otherConfig *spatial.SpatialConfig) (*spatial.Distance, error)
+	IsPathBlocked(to *spatial.SpatialConfig, messageType string) bool
+}
+
 // NodeProvider combines all interfaces
 type NodeProvider interface {
 	NodeStatusProvider
 	DiffusionProvider
 	ComputationProvider
 	ConfigurationProvider
+	SpatialProvider
 }
 
 // Server provides HTTP API for node control and status
@@ -88,6 +99,12 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/adaptive/neighbors", s.handleNeighborMetrics)
 	mux.HandleFunc("/adaptive/faults", s.handleFaultPatterns)
 	mux.HandleFunc("/adaptive/system", s.handleSystemMetrics)
+
+	// Phase 3C.1: Spatial configuration endpoints
+	mux.HandleFunc("/spatial/position", s.handleSpatialPosition)
+	mux.HandleFunc("/spatial/neighbors", s.handleSpatialNeighbors)
+	mux.HandleFunc("/spatial/barriers", s.handleSpatialBarriers)
+	mux.HandleFunc("/spatial/distance", s.handleSpatialDistance)
 
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
@@ -776,6 +793,201 @@ func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
 		response["system_metrics"] = map[string]interface{}{
 			"message": "Advanced system metrics not available with default behavior modifier",
 		}
+	}
+
+	s.writeJSON(w, response)
+}
+
+// Phase 3C.1: Spatial configuration handlers
+
+// handleSpatialPosition handles GET/POST requests for spatial position configuration
+func (s *Server) handleSpatialPosition(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		s.handleGetSpatialPosition(w, r)
+	case "POST":
+		s.handleUpdateSpatialPosition(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleGetSpatialPosition returns the current spatial configuration
+func (s *Server) handleGetSpatialPosition(w http.ResponseWriter, r *http.Request) {
+	spatialConfig := s.node.GetSpatialConfig()
+
+	response := map[string]interface{}{
+		"spatial_config": spatialConfig,
+		"description":    spatialConfig.String(),
+		"has_coords":     spatialConfig.HasCoordinates(),
+		"is_empty":       spatialConfig.IsEmpty(),
+	}
+
+	s.writeJSON(w, response)
+}
+
+// handleUpdateSpatialPosition updates the spatial configuration
+func (s *Server) handleUpdateSpatialPosition(w http.ResponseWriter, r *http.Request) {
+	var updateRequest struct {
+		CoordSystem string   `json:"coord_system"`
+		X           *float64 `json:"x,omitempty"`
+		Y           *float64 `json:"y,omitempty"`
+		Z           *float64 `json:"z,omitempty"`
+		Zone        string   `json:"zone"`
+		Barriers    []string `json:"barriers,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&updateRequest); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Create new spatial configuration
+	newConfig, err := spatial.NewSpatialConfig(
+		updateRequest.CoordSystem,
+		updateRequest.X,
+		updateRequest.Y,
+		updateRequest.Z,
+		updateRequest.Zone,
+		updateRequest.Barriers,
+	)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid spatial configuration: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Update node's spatial configuration
+	if err := s.node.UpdateSpatialConfig(newConfig); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update spatial configuration: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"message": "Spatial configuration updated successfully",
+		"config":  newConfig,
+	}
+
+	s.writeJSON(w, response)
+}
+
+// handleSpatialNeighbors returns neighbors with distance information
+func (s *Server) handleSpatialNeighbors(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get current neighbors from discovery service (would need to extend discovery service)
+	// For now, return placeholder showing the structure
+
+	response := map[string]interface{}{
+		"message":                "Spatial neighbors endpoint - requires Phase 3C.2 implementation",
+		"current_spatial_config": s.node.GetSpatialConfig(),
+		"example_neighbor": map[string]interface{}{
+			"node_id": "example_neighbor_123",
+			"spatial_config": map[string]interface{}{
+				"coord_system": "gps",
+				"x":            40.7128,
+				"y":            -74.0060,
+				"z":            10.5,
+				"zone":         "datacenter_a",
+			},
+			"distance": map[string]interface{}{
+				"value":        150.5,
+				"unit":         "meters",
+				"coord_system": "gps",
+			},
+			"same_zone":    true,
+			"path_blocked": false,
+		},
+	}
+
+	s.writeJSON(w, response)
+}
+
+// handleSpatialBarriers returns barrier configuration and status
+func (s *Server) handleSpatialBarriers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	barrierManager := s.node.GetBarrierManager()
+	barriers := barrierManager.GetAllBarriers()
+
+	// Convert barriers to JSON-serializable format
+	barrierList := make([]map[string]interface{}, 0, len(barriers))
+	for _, barrier := range barriers {
+		barrierList = append(barrierList, map[string]interface{}{
+			"id":          barrier.ID,
+			"type":        barrier.Type,
+			"description": barrier.Description,
+			"isolation":   barrier.Isolation,
+			"zone_a":      barrier.ZoneA,
+			"zone_b":      barrier.ZoneB,
+		})
+	}
+
+	response := map[string]interface{}{
+		"barriers":            barrierList,
+		"barriers_count":      len(barriers),
+		"node_spatial_config": s.node.GetSpatialConfig(),
+	}
+
+	s.writeJSON(w, response)
+}
+
+// handleSpatialDistance calculates distance to specified coordinates
+func (s *Server) handleSpatialDistance(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var distanceRequest struct {
+		CoordSystem string   `json:"coord_system"`
+		X           *float64 `json:"x,omitempty"`
+		Y           *float64 `json:"y,omitempty"`
+		Z           *float64 `json:"z,omitempty"`
+		Zone        string   `json:"zone"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&distanceRequest); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Create target spatial configuration
+	targetConfig, err := spatial.NewSpatialConfig(
+		distanceRequest.CoordSystem,
+		distanceRequest.X,
+		distanceRequest.Y,
+		distanceRequest.Z,
+		distanceRequest.Zone,
+		nil, // No barriers for distance calculation
+	)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid target configuration: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Calculate distance
+	distance, err := s.node.CalculateDistanceTo(targetConfig)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to calculate distance: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Check if path is blocked
+	pathBlocked := s.node.IsPathBlocked(targetConfig, "routine") // Use routine message type as default
+
+	response := map[string]interface{}{
+		"from_config":  s.node.GetSpatialConfig(),
+		"to_config":    targetConfig,
+		"distance":     distance,
+		"same_zone":    spatial.IsInSameZone(s.node.GetSpatialConfig(), targetConfig),
+		"path_blocked": pathBlocked,
+		"message_type": "routine",
 	}
 
 	s.writeJSON(w, response)

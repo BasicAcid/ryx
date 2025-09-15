@@ -15,6 +15,7 @@ import (
 	"github.com/BasicAcid/ryx/internal/config"
 	"github.com/BasicAcid/ryx/internal/diffusion"
 	"github.com/BasicAcid/ryx/internal/discovery"
+	"github.com/BasicAcid/ryx/internal/spatial"
 )
 
 // Config holds node configuration
@@ -23,6 +24,9 @@ type Config struct {
 	HTTPPort  int
 	ClusterID string
 	NodeID    string
+
+	// Phase 3C.1: Spatial configuration
+	SpatialConfig *spatial.SpatialConfig
 }
 
 // Node represents a single ryx node
@@ -38,6 +42,9 @@ type Node struct {
 	// Self-modification components
 	runtimeParams *config.RuntimeParameters
 	behaviorMod   config.BehaviorModifier
+
+	// Phase 3C.1: Spatial awareness
+	barrierManager *spatial.BarrierManager
 
 	mu      sync.RWMutex
 	running bool
@@ -55,11 +62,26 @@ func New(cfg *Config) (*Node, error) {
 	runtimeParams := config.GetDefaults()
 	behaviorMod := config.NewAdaptiveBehaviorModifier(runtimeParams)
 
+	// Phase 3C.1: Initialize spatial configuration with defaults if not provided
+	spatialConfig := cfg.SpatialConfig
+	if spatialConfig == nil {
+		// Default to no spatial awareness for backward compatibility
+		spatialConfig = &spatial.SpatialConfig{
+			CoordSystem: spatial.CoordSystemNone,
+			Zone:        "default",
+		}
+	}
+
+	// Initialize barrier manager and load barriers from config
+	barrierManager := spatial.NewBarrierManager()
+	barrierManager.LoadBarriersFromConfig(spatialConfig)
+
 	node := &Node{
-		id:            nodeID,
-		config:        cfg,
-		runtimeParams: runtimeParams,
-		behaviorMod:   behaviorMod,
+		id:             nodeID,
+		config:         cfg,
+		runtimeParams:  runtimeParams,
+		behaviorMod:    behaviorMod,
+		barrierManager: barrierManager,
 	}
 
 	// Phase 3B: Initialize services with advanced behavior modification
@@ -208,6 +230,26 @@ func (n *Node) GetStatus() map[string]interface{} {
 		status["computation"] = n.computation.GetComputationStats()
 	}
 
+	// Phase 3C.1: Add spatial configuration to status
+	spatialConfig := n.GetSpatialConfig()
+	if spatialConfig != nil && !spatialConfig.IsEmpty() {
+		status["spatial"] = map[string]interface{}{
+			"coord_system": spatialConfig.CoordSystem,
+			"x":            spatialConfig.X,
+			"y":            spatialConfig.Y,
+			"z":            spatialConfig.Z,
+			"zone":         spatialConfig.Zone,
+			"barriers":     spatialConfig.Barriers,
+			"has_coords":   spatialConfig.HasCoordinates(),
+		}
+
+		// Add barrier manager status
+		if n.barrierManager != nil {
+			barriers := n.barrierManager.GetAllBarriers()
+			status["barriers_count"] = len(barriers)
+		}
+	}
+
 	return status
 }
 
@@ -250,6 +292,66 @@ func (n *Node) UpdateParameters(updates map[string]interface{}) map[string]bool 
 	}
 
 	return n.runtimeParams.UpdateBatch(updates)
+}
+
+// Phase 3C.1: Spatial configuration methods
+
+// GetSpatialConfig returns the node's spatial configuration
+func (n *Node) GetSpatialConfig() *spatial.SpatialConfig {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
+	if n.config.SpatialConfig != nil {
+		return n.config.SpatialConfig
+	}
+
+	// Return default spatial config for backward compatibility
+	return &spatial.SpatialConfig{
+		CoordSystem: spatial.CoordSystemNone,
+		Zone:        "default",
+	}
+}
+
+// UpdateSpatialConfig updates the node's spatial configuration
+func (n *Node) UpdateSpatialConfig(newConfig *spatial.SpatialConfig) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	// Validate the new configuration
+	if err := newConfig.Validate(); err != nil {
+		return fmt.Errorf("invalid spatial configuration: %w", err)
+	}
+
+	n.config.SpatialConfig = newConfig
+
+	// Reload barriers from the new configuration
+	n.barrierManager.LoadBarriersFromConfig(newConfig)
+
+	log.Printf("Node %s spatial configuration updated: %s", n.id, newConfig.String())
+	return nil
+}
+
+// GetBarrierManager returns the barrier manager for spatial isolation
+func (n *Node) GetBarrierManager() *spatial.BarrierManager {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.barrierManager
+}
+
+// CalculateDistanceTo calculates distance to another node's spatial config
+func (n *Node) CalculateDistanceTo(otherConfig *spatial.SpatialConfig) (*spatial.Distance, error) {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
+	return spatial.CalculateDistance(n.GetSpatialConfig(), otherConfig)
+}
+
+// IsPathBlocked returns true if communication path is blocked by barriers
+func (n *Node) IsPathBlocked(to *spatial.SpatialConfig, messageType string) bool {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
+	return n.barrierManager.PathBlocked(n.GetSpatialConfig(), to, messageType)
 }
 
 // generateNodeID creates a random node identifier
