@@ -12,6 +12,7 @@ import (
 	"github.com/BasicAcid/ryx/internal/computation"
 	"github.com/BasicAcid/ryx/internal/config"
 	"github.com/BasicAcid/ryx/internal/diffusion"
+	"github.com/BasicAcid/ryx/internal/discovery"
 	"github.com/BasicAcid/ryx/internal/spatial"
 	"github.com/BasicAcid/ryx/internal/types"
 )
@@ -39,6 +40,11 @@ type ConfigurationProvider interface {
 	UpdateParameters(updates map[string]interface{}) map[string]bool
 }
 
+// DiscoveryProvider interface for accessing discovery service
+type DiscoveryProvider interface {
+	GetDiscoveryService() *discovery.Service
+}
+
 // SpatialProvider interface for accessing spatial configuration and barriers
 type SpatialProvider interface {
 	GetSpatialConfig() *spatial.SpatialConfig
@@ -54,6 +60,7 @@ type NodeProvider interface {
 	DiffusionProvider
 	ComputationProvider
 	ConfigurationProvider
+	DiscoveryProvider
 	SpatialProvider
 }
 
@@ -877,28 +884,57 @@ func (s *Server) handleSpatialNeighbors(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Get current neighbors from discovery service (would need to extend discovery service)
-	// For now, return placeholder showing the structure
+	// Phase 3C.2: Get real spatial neighbors data from discovery service
+	discoveryService := s.node.GetDiscoveryService()
+	neighbors := discoveryService.GetNeighborsWithDistance()
+
+	neighborsData := make([]map[string]interface{}, 0, len(neighbors))
+	sameZoneCount := 0
+
+	nodeSpatialConfig := s.node.GetSpatialConfig()
+
+	for _, neighbor := range neighbors {
+		neighborData := map[string]interface{}{
+			"node_id":        neighbor.NodeID,
+			"address":        neighbor.Address,
+			"port":           neighbor.Port,
+			"cluster_id":     neighbor.ClusterID,
+			"last_seen":      neighbor.LastSeen,
+			"spatial_config": neighbor.SpatialConfig,
+			"distance":       neighbor.Distance,
+		}
+
+		// Add spatial analysis
+		if neighbor.SpatialConfig != nil && nodeSpatialConfig != nil {
+			sameZone := spatial.IsInSameZone(nodeSpatialConfig, neighbor.SpatialConfig)
+			neighborData["same_zone"] = sameZone
+			neighborData["path_blocked"] = s.node.IsPathBlocked(neighbor.SpatialConfig, "routine")
+
+			if sameZone {
+				sameZoneCount++
+			}
+		} else {
+			neighborData["same_zone"] = false
+			neighborData["path_blocked"] = false
+		}
+
+		neighborsData = append(neighborsData, neighborData)
+	}
+
+	// Zone-aware neighbor selection analysis
+	sameZoneNeighbors := discoveryService.GetNeighborsInZone(nodeSpatialConfig.Zone)
+	crossZoneNeighbors := discoveryService.GetNeighborsOutsideZone(nodeSpatialConfig.Zone)
 
 	response := map[string]interface{}{
-		"message":                "Spatial neighbors endpoint - requires Phase 3C.2 implementation",
-		"current_spatial_config": s.node.GetSpatialConfig(),
-		"example_neighbor": map[string]interface{}{
-			"node_id": "example_neighbor_123",
-			"spatial_config": map[string]interface{}{
-				"coord_system": "gps",
-				"x":            40.7128,
-				"y":            -74.0060,
-				"z":            10.5,
-				"zone":         "datacenter_a",
-			},
-			"distance": map[string]interface{}{
-				"value":        150.5,
-				"unit":         "meters",
-				"coord_system": "gps",
-			},
-			"same_zone":    true,
-			"path_blocked": false,
+		"neighbors":              neighborsData,
+		"neighbors_count":        len(neighbors),
+		"current_spatial_config": nodeSpatialConfig,
+		"zone_analysis": map[string]interface{}{
+			"same_zone_count":   len(sameZoneNeighbors),
+			"cross_zone_count":  len(crossZoneNeighbors),
+			"same_zone_ratio":   float64(len(sameZoneNeighbors)) / float64(len(neighbors)),
+			"target_same_zone":  0.7, // 70% target
+			"target_cross_zone": 0.3, // 30% target
 		},
 	}
 

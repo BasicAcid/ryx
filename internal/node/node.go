@@ -87,8 +87,8 @@ func New(cfg *Config) (*Node, error) {
 	// Phase 3B: Initialize services with advanced behavior modification
 	var err error
 
-	// Initialize discovery service with performance-based neighbor selection
-	node.discovery, err = discovery.NewWithConfig(cfg.Port, cfg.ClusterID, nodeID, runtimeParams, behaviorMod)
+	// Phase 3C.2: Initialize discovery service with spatial awareness
+	node.discovery, err = discovery.NewWithSpatialConfig(cfg.Port, cfg.ClusterID, nodeID, runtimeParams, behaviorMod, spatialConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discovery service: %w", err)
 	}
@@ -352,6 +352,13 @@ func (n *Node) IsPathBlocked(to *spatial.SpatialConfig, messageType string) bool
 	defer n.mu.RUnlock()
 
 	return n.barrierManager.PathBlocked(n.GetSpatialConfig(), to, messageType)
+}
+
+// GetDiscoveryService returns the discovery service for API access
+func (n *Node) GetDiscoveryService() *discovery.Service {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.discovery
 }
 
 // generateNodeID creates a random node identifier

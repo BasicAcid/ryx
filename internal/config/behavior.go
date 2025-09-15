@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BasicAcid/ryx/internal/spatial"
 	"github.com/BasicAcid/ryx/internal/types"
 )
 
@@ -651,6 +652,87 @@ func (a *AdaptiveBehaviorModifier) CalculateNeighborScore(neighborID string) flo
 
 	// Ensure score is in valid range
 	return math.Max(0.0, math.Min(1.0, score))
+}
+
+// Phase 3C.2: Spatial-aware neighbor scoring
+// CalculateNeighborScoreWithSpatial computes score including spatial factors
+func (a *AdaptiveBehaviorModifier) CalculateNeighborScoreWithSpatial(neighborID string, neighborSpatialConfig *spatial.SpatialConfig, distance *spatial.Distance, nodeSpatialConfig *spatial.SpatialConfig) float64 {
+	// Start with base network performance score
+	networkScore := a.CalculateNeighborScore(neighborID)
+
+	// If no spatial configuration available, return network score only
+	if nodeSpatialConfig == nil || nodeSpatialConfig.IsEmpty() || neighborSpatialConfig == nil || neighborSpatialConfig.IsEmpty() {
+		return networkScore
+	}
+
+	// Calculate spatial score
+	spatialScore := a.calculateSpatialScore(nodeSpatialConfig, neighborSpatialConfig, distance)
+
+	// Hybrid scoring: 60% network performance + 40% spatial factors
+	hybridScore := 0.6*networkScore + 0.4*spatialScore
+
+	return math.Max(0.0, math.Min(1.0, hybridScore))
+}
+
+// calculateSpatialScore computes spatial component of neighbor score
+func (a *AdaptiveBehaviorModifier) calculateSpatialScore(nodeConfig, neighborConfig *spatial.SpatialConfig, distance *spatial.Distance) float64 {
+	score := 0.5 // Base neutral score
+
+	// Zone affinity bonus (same zone gets higher score)
+	if spatial.IsInSameZone(nodeConfig, neighborConfig) {
+		score += 0.3 // +30% for same zone neighbors
+	}
+
+	// Distance penalty/bonus
+	if distance != nil && !math.IsInf(distance.Value, 1) {
+		// Normalize distance score based on coordinate system
+		distanceScore := a.calculateDistanceScore(distance)
+		score += 0.2 * distanceScore // Distance contributes up to 20%
+	}
+
+	// Coordinate system compatibility
+	if nodeConfig.CoordSystem == neighborConfig.CoordSystem {
+		score += 0.1 // +10% for same coordinate system
+	}
+
+	return math.Max(0.0, math.Min(1.0, score))
+}
+
+// calculateDistanceScore converts distance to a 0-1 score (closer = higher score)
+func (a *AdaptiveBehaviorModifier) calculateDistanceScore(distance *spatial.Distance) float64 {
+	switch distance.CoordSystem {
+	case spatial.CoordSystemGPS:
+		// For GPS: 0-1km = 1.0, 1-10km = 0.5-1.0, >50km = 0.0
+		if distance.Value <= 1000 { // 1km
+			return 1.0
+		} else if distance.Value <= 10000 { // 10km
+			return 1.0 - (distance.Value-1000)/9000*0.5 // Linear decay from 1.0 to 0.5
+		} else if distance.Value <= 50000 { // 50km
+			return 0.5 - (distance.Value-10000)/40000*0.5 // Linear decay from 0.5 to 0.0
+		}
+		return 0.0
+
+	case spatial.CoordSystemRelative:
+		// For relative: 0-10m = 1.0, 10-100m = 0.5-1.0, >500m = 0.0
+		if distance.Value <= 10 {
+			return 1.0
+		} else if distance.Value <= 100 {
+			return 1.0 - (distance.Value-10)/90*0.5
+		} else if distance.Value <= 500 {
+			return 0.5 - (distance.Value-100)/400*0.5
+		}
+		return 0.0
+
+	case spatial.CoordSystemLogical:
+		// For logical: same zone = 1.0, different zone = 0.2
+		if distance.Value == 0 {
+			return 1.0 // Same zone
+		}
+		return 0.2 // Different zone
+
+	default:
+		return 0.5 // Neutral for unknown systems
+	}
 }
 
 // ShouldAddNeighbor with performance-based evaluation

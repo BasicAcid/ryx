@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/BasicAcid/ryx/internal/config"
+	"github.com/BasicAcid/ryx/internal/spatial"
 	"github.com/BasicAcid/ryx/internal/types"
 )
 
@@ -20,6 +21,10 @@ type Neighbor struct {
 	Port      int       `json:"port"`
 	ClusterID string    `json:"cluster_id"`
 	LastSeen  time.Time `json:"last_seen"`
+
+	// Phase 3C.2: Spatial information
+	SpatialConfig *spatial.SpatialConfig `json:"spatial_config,omitempty"`
+	Distance      *spatial.Distance      `json:"distance,omitempty"`
 }
 
 // AnnounceMessage is broadcast to discover neighbors
@@ -29,6 +34,14 @@ type AnnounceMessage struct {
 	ClusterID string `json:"cluster_id"`
 	Port      int    `json:"port"`
 	Timestamp int64  `json:"timestamp"`
+
+	// Phase 3C.2: Spatial information
+	CoordSystem string   `json:"coord_system,omitempty"`
+	X           *float64 `json:"x,omitempty"`
+	Y           *float64 `json:"y,omitempty"`
+	Z           *float64 `json:"z,omitempty"`
+	Zone        string   `json:"zone,omitempty"`
+	Barriers    []string `json:"barriers,omitempty"`
 }
 
 // Service handles neighbor discovery via UDP broadcasts
@@ -45,6 +58,9 @@ type Service struct {
 	// Phase 3B: Performance-based neighbor selection
 	runtimeParams *config.RuntimeParameters
 	behaviorMod   config.BehaviorModifier
+
+	// Phase 3C.2: Spatial awareness
+	spatialConfig *spatial.SpatialConfig
 }
 
 // New creates a new discovery service
@@ -68,6 +84,23 @@ func NewWithConfig(port int, clusterID, nodeID string, params *config.RuntimePar
 		// Phase 3B: Advanced configuration
 		runtimeParams: params,
 		behaviorMod:   behaviorMod,
+	}, nil
+}
+
+// NewWithSpatialConfig creates a discovery service with spatial awareness
+func NewWithSpatialConfig(port int, clusterID, nodeID string, params *config.RuntimeParameters, behaviorMod config.BehaviorModifier, spatialConfig *spatial.SpatialConfig) (*Service, error) {
+	return &Service{
+		port:      port,
+		clusterID: clusterID,
+		nodeID:    nodeID,
+		neighbors: make(map[string]*Neighbor),
+
+		// Phase 3B: Advanced configuration
+		runtimeParams: params,
+		behaviorMod:   behaviorMod,
+
+		// Phase 3C.2: Spatial configuration
+		spatialConfig: spatialConfig,
 	}, nil
 }
 
@@ -187,6 +220,36 @@ func (s *Service) handleAnnouncement(data []byte, addr *net.UDPAddr) {
 
 	log.Printf("Discovered neighbor: %s at %s:%d", msg.NodeID, addr.IP, msg.Port)
 
+	// Phase 3C.2: Extract spatial configuration from announcement
+	var neighborSpatialConfig *spatial.SpatialConfig
+	var distance *spatial.Distance
+
+	if msg.CoordSystem != "" {
+		// Create spatial config from announcement message
+		spatialConfig, err := spatial.NewSpatialConfig(
+			msg.CoordSystem,
+			msg.X, msg.Y, msg.Z,
+			msg.Zone,
+			msg.Barriers,
+		)
+		if err != nil {
+			log.Printf("Warning: Invalid spatial config from neighbor %s: %v", msg.NodeID, err)
+		} else {
+			neighborSpatialConfig = spatialConfig
+
+			// Calculate distance if both nodes have spatial configuration
+			if s.spatialConfig != nil && !s.spatialConfig.IsEmpty() {
+				dist, err := spatial.CalculateDistance(s.spatialConfig, neighborSpatialConfig)
+				if err != nil {
+					log.Printf("Warning: Failed to calculate distance to neighbor %s: %v", msg.NodeID, err)
+				} else {
+					distance = dist
+					log.Printf("Neighbor %s distance: %s", msg.NodeID, distance.String())
+				}
+			}
+		}
+	}
+
 	// Phase 3B: Use behavior modifier for neighbor addition decisions
 	candidate := &types.Neighbor{
 		NodeID:    msg.NodeID,
@@ -216,11 +279,13 @@ func (s *Service) handleAnnouncement(data []byte, addr *net.UDPAddr) {
 		}
 
 		s.neighbors[msg.NodeID] = &Neighbor{
-			NodeID:    msg.NodeID,
-			Address:   addr.IP.String(),
-			Port:      msg.Port,
-			ClusterID: msg.ClusterID,
-			LastSeen:  time.Now(),
+			NodeID:        msg.NodeID,
+			Address:       addr.IP.String(),
+			Port:          msg.Port,
+			ClusterID:     msg.ClusterID,
+			LastSeen:      time.Now(),
+			SpatialConfig: neighborSpatialConfig,
+			Distance:      distance,
 		}
 		s.mu.Unlock()
 
@@ -256,6 +321,16 @@ func (s *Service) sendAnnouncement() {
 		ClusterID: s.clusterID,
 		Port:      s.port,
 		Timestamp: time.Now().Unix(),
+	}
+
+	// Phase 3C.2: Include spatial information if available
+	if s.spatialConfig != nil && !s.spatialConfig.IsEmpty() {
+		msg.CoordSystem = string(s.spatialConfig.CoordSystem)
+		msg.X = s.spatialConfig.X
+		msg.Y = s.spatialConfig.Y
+		msg.Z = s.spatialConfig.Z
+		msg.Zone = s.spatialConfig.Zone
+		msg.Barriers = s.spatialConfig.Barriers
 	}
 
 	data, err := json.Marshal(msg)
@@ -394,8 +469,15 @@ func (s *Service) removeWorstNeighbor() {
 	worstNodeID := ""
 
 	if adaptiveMod, ok := s.behaviorMod.(*config.AdaptiveBehaviorModifier); ok {
-		for nodeID := range s.neighbors {
-			score := adaptiveMod.CalculateNeighborScore(nodeID)
+		for nodeID, neighbor := range s.neighbors {
+			// Phase 3C.2: Use spatial-aware scoring if available
+			var score float64
+			if s.spatialConfig != nil && neighbor.SpatialConfig != nil {
+				score = adaptiveMod.CalculateNeighborScoreWithSpatial(nodeID, neighbor.SpatialConfig, neighbor.Distance, s.spatialConfig)
+			} else {
+				score = adaptiveMod.CalculateNeighborScore(nodeID)
+			}
+
 			if score < worstScore {
 				worstScore = score
 				worstNodeID = nodeID
@@ -407,4 +489,120 @@ func (s *Service) removeWorstNeighbor() {
 			delete(s.neighbors, worstNodeID)
 		}
 	}
+}
+
+// Phase 3C.2: Zone-aware neighbor selection methods
+
+// GetNeighborsInZone returns neighbors in the specified zone
+func (s *Service) GetNeighborsInZone(zone string) []*Neighbor {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var zoneNeighbors []*Neighbor
+	for _, neighbor := range s.neighbors {
+		if neighbor.SpatialConfig != nil && neighbor.SpatialConfig.Zone == zone {
+			zoneNeighbors = append(zoneNeighbors, neighbor)
+		}
+	}
+	return zoneNeighbors
+}
+
+// GetNeighborsOutsideZone returns neighbors not in the specified zone
+func (s *Service) GetNeighborsOutsideZone(zone string) []*Neighbor {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var outsideNeighbors []*Neighbor
+	for _, neighbor := range s.neighbors {
+		if neighbor.SpatialConfig == nil || neighbor.SpatialConfig.Zone != zone {
+			outsideNeighbors = append(outsideNeighbors, neighbor)
+		}
+	}
+	return outsideNeighbors
+}
+
+// GetNeighborsWithDistance returns all neighbors with their distance information
+func (s *Service) GetNeighborsWithDistance() []*Neighbor {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	neighbors := make([]*Neighbor, 0, len(s.neighbors))
+	for _, neighbor := range s.neighbors {
+		neighbors = append(neighbors, neighbor)
+	}
+	return neighbors
+}
+
+// SelectOptimalNeighbors implements zone-aware neighbor selection
+func (s *Service) SelectOptimalNeighbors() []*Neighbor {
+	if s.spatialConfig == nil || s.spatialConfig.IsEmpty() {
+		// No spatial config - use all neighbors
+		return s.GetNeighborsWithDistance()
+	}
+
+	maxNeighbors := 8
+	if s.runtimeParams != nil {
+		maxNeighbors = s.runtimeParams.GetInt("max_neighbors", 8)
+	}
+
+	sameZone := s.GetNeighborsInZone(s.spatialConfig.Zone)
+	crossZone := s.GetNeighborsOutsideZone(s.spatialConfig.Zone)
+
+	// Target: 70% same-zone, 30% cross-zone for redundancy
+	sameZoneTarget := int(0.7 * float64(maxNeighbors))
+	crossZoneTarget := maxNeighbors - sameZoneTarget
+
+	optimal := s.selectBestByScore(sameZone, sameZoneTarget)
+	optimal = append(optimal, s.selectBestByScore(crossZone, crossZoneTarget)...)
+
+	return optimal
+}
+
+// selectBestByScore selects the highest-scoring neighbors up to the target count
+func (s *Service) selectBestByScore(neighbors []*Neighbor, targetCount int) []*Neighbor {
+	if len(neighbors) <= targetCount {
+		return neighbors
+	}
+
+	// Calculate scores for all neighbors
+	type neighborScore struct {
+		neighbor *Neighbor
+		score    float64
+	}
+
+	var scored []neighborScore
+
+	if adaptiveMod, ok := s.behaviorMod.(*config.AdaptiveBehaviorModifier); ok {
+		for _, neighbor := range neighbors {
+			var score float64
+			if s.spatialConfig != nil && neighbor.SpatialConfig != nil {
+				score = adaptiveMod.CalculateNeighborScoreWithSpatial(neighbor.NodeID, neighbor.SpatialConfig, neighbor.Distance, s.spatialConfig)
+			} else {
+				score = adaptiveMod.CalculateNeighborScore(neighbor.NodeID)
+			}
+			scored = append(scored, neighborScore{neighbor: neighbor, score: score})
+		}
+	} else {
+		// No behavior modifier - use equal scoring
+		for _, neighbor := range neighbors {
+			scored = append(scored, neighborScore{neighbor: neighbor, score: 0.5})
+		}
+	}
+
+	// Sort by score (highest first)
+	for i := 0; i < len(scored)-1; i++ {
+		for j := i + 1; j < len(scored); j++ {
+			if scored[j].score > scored[i].score {
+				scored[i], scored[j] = scored[j], scored[i]
+			}
+		}
+	}
+
+	// Return top targetCount neighbors
+	result := make([]*Neighbor, 0, targetCount)
+	for i := 0; i < targetCount && i < len(scored); i++ {
+		result = append(result, scored[i].neighbor)
+	}
+
+	return result
 }
