@@ -1,0 +1,4 @@
+# Experimental directory - not part of main build
+*
+!.gitignore
+!*/README.md

@@ -1,3 +1,3 @@
-module github.com/BasicAcid/ryx
+go 1.21
 
-go 1.24.4
+module github.com/BasicAcid/ryx
