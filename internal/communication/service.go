@@ -19,7 +19,7 @@ type Message struct {
 	From      string                 `json:"from"`
 	To        string                 `json:"to"`
 	Data      map[string]interface{} `json:"data"`
-	Energy    int                    `json:"energy"`
+	Energy    float64                `json:"energy"`
 	Hops      int                    `json:"hops"`
 	Timestamp int64                  `json:"timestamp"`
 }

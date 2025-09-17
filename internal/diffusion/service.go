@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BasicAcid/ryx/internal/chemistry"
 	"github.com/BasicAcid/ryx/internal/config"
 	"github.com/BasicAcid/ryx/internal/types"
 )
@@ -27,14 +28,18 @@ type Service struct {
 	runtimeParams *config.RuntimeParameters
 	behaviorMod   config.BehaviorModifier
 	cleanupTicker *time.Ticker
+
+	// Chemistry engine for Phase 4A
+	chemEngine *chemistry.Engine
 }
 
 // New creates a new diffusion service
 func New(nodeID string) *Service {
 	log.Printf("Creating new diffusion service for node %s", nodeID)
 	return &Service{
-		nodeID:  nodeID,
-		storage: make(map[string]*types.InfoMessage),
+		nodeID:     nodeID,
+		storage:    make(map[string]*types.InfoMessage),
+		chemEngine: chemistry.NewEngine(nodeID),
 	}
 }
 
@@ -46,6 +51,7 @@ func NewWithConfig(nodeID string, params *config.RuntimeParameters, behaviorMod 
 		storage:       make(map[string]*types.InfoMessage),
 		runtimeParams: params,
 		behaviorMod:   behaviorMod,
+		chemEngine:    chemistry.NewEngine(nodeID),
 	}
 }
 
@@ -69,8 +75,8 @@ func (s *Service) Stop() {
 }
 
 // InjectInfo creates and stores new information (simplified version)
-func (s *Service) InjectInfo(infoType string, content []byte, energy int, ttl time.Duration) (*types.InfoMessage, error) {
-	log.Printf("InjectInfo called: type=%s, content_len=%d, energy=%d, ttl=%v", infoType, len(content), energy, ttl)
+func (s *Service) InjectInfo(infoType string, content []byte, energy float64, ttl time.Duration) (*types.InfoMessage, error) {
+	log.Printf("InjectInfo called: type=%s, content_len=%d, energy=%f, ttl=%v", infoType, len(content), energy, ttl)
 
 	// Apply behavior modifier to TTL if available
 	adjustedTTL := ttl
@@ -111,6 +117,9 @@ func (s *Service) InjectInfo(infoType string, content []byte, energy int, ttl ti
 	s.mu.Unlock()
 
 	log.Printf("Information injected successfully: id=%s", id)
+
+	// Process chemistry reactions (Phase 4A)
+	s.processChemistryForNewMessage(info)
 
 	// Forward to neighbors if energy > 0 (Phase 2B inter-node diffusion)
 	if info.Energy > 0 {
@@ -363,7 +372,7 @@ func (s *Service) createForwardedMessage(original *types.InfoMessage, targetNode
 		ID:        original.ID,
 		Type:      original.Type,
 		Content:   original.Content,
-		Energy:    int(float64(original.Energy) - energyDecay), // Configurable energy decay
+		Energy:    original.Energy - energyDecay, // Configurable energy decay
 		TTL:       original.TTL,
 		Hops:      original.Hops + 1, // Increase hop count
 		Source:    original.Source,   // Keep original source
@@ -389,4 +398,48 @@ func generateInfoID(content []byte) string {
 	hash := sha256.Sum256(content)
 	// Use first 8 bytes for shorter, readable IDs
 	return hex.EncodeToString(hash[:8])
+}
+
+// processChemistryForNewMessage processes chemistry reactions when a new message is injected
+// Phase 4A: Chemistry-based computing integration
+func (s *Service) processChemistryForNewMessage(newMsg *types.InfoMessage) {
+	if s.chemEngine == nil {
+		return // Chemistry disabled
+	}
+
+	// Get all stored messages for reaction processing
+	s.mu.RLock()
+	messages := make([]*types.InfoMessage, 0, len(s.storage))
+	for _, msg := range s.storage {
+		messages = append(messages, msg)
+	}
+	s.mu.RUnlock()
+
+	// Update concentrations with new message
+	s.chemEngine.UpdateConcentrations(messages)
+
+	// Process chemical reactions
+	products, reactions := s.chemEngine.ProcessChemicalReactions(messages)
+
+	// Store any new product messages
+	if len(products) > 0 {
+		s.mu.Lock()
+		for _, product := range products {
+			if _, exists := s.storage[product.ID]; !exists {
+				s.storage[product.ID] = product
+				log.Printf("Chemistry: Created product message %s from reaction", product.ID)
+			}
+		}
+		s.mu.Unlock()
+	}
+
+	// Log reactions
+	if len(reactions) > 0 {
+		log.Printf("Chemistry: Processed %d chemical reactions for node %s", len(reactions), s.nodeID)
+	}
+}
+
+// GetChemistryEngine returns the chemistry engine for API access
+func (s *Service) GetChemistryEngine() *chemistry.Engine {
+	return s.chemEngine
 }

@@ -2,16 +2,19 @@
 
 ## Current System Status
 
-**Ryx is now a mission-critical spatial-physical distributed computing system** with the following operational capabilities:
+**Ryx is now a mission-critical spatial-physical distributed computing system with chemistry-based computing** and the following operational capabilities:
 
 ### Core Capabilities (Production Ready)
 - **Spatial-aware distributed computing**: Multi-modal coordinate systems (GPS, relative, logical, none)
+- **Chemistry-based computing**: Continuous energy model with chemical reactions and concentration tracking
 - **Hybrid neighbor selection**: 60% network performance + 40% spatial factors  
 - **Zone-aware topology**: 70% same-zone, 30% cross-zone neighbors for optimal redundancy
 - **Physical fault isolation**: Barrier-aware routing with compartment/zone isolation
 - **Autonomous intelligence**: Runtime behavior adaptation based on network conditions and spatial factors
 - **Large-scale operation**: 50+ node clusters with spatial awareness and race-condition-free operations
-- **Mission-critical APIs**: Complete spatial neighbor analysis, distance calculation, and barrier management
+- **Mission-critical APIs**: Complete spatial neighbor analysis, distance calculation, barrier management, and chemistry monitoring
+- **Chemistry engine**: 800+ lines of chemical reaction processing with real-time concentration tracking
+- **Continuous energy**: Float64 energy model with priority-based decay and chemical properties
 
 ### Deployment Scenarios
 - **🚀 Spaceship core systems**: Compartment isolation (bridge/engine bay) with bulkhead barriers
@@ -20,11 +23,30 @@
 - **☁️ Cloud deployments**: Logical zone awareness for availability regions
 - **🏭 Industrial control**: Physical zone isolation for safety-critical systems
 
+## Current Development Phase: 4B-Alt System Hardening & Observability
+
+**Strategic Focus**: Before adding more features, we're consolidating and hardening existing capabilities for production readiness. The system has sophisticated spatial + chemistry computing but needs validation for real-world mission-critical deployment.
+
+**Phase 4B-Alt Goals**:
+- **Long-term stability testing**: 24+ hour continuous operation validation
+- **Comprehensive monitoring**: Enhanced metrics APIs and external observability stack
+- **Failure scenario testing**: Controlled hardware/network failure injection and recovery
+- **Performance optimization**: Resource usage profiling and optimization
+- **Production readiness**: Docker/systemd integration and deployment automation
+
+**Observability Strategy**: Hybrid approach with external metrics aggregation while maintaining distributed principles
+- Enhanced `/metrics/*` endpoints for detailed performance data
+- External collector for cluster-wide monitoring and alerting
+- Real-time dashboard for cluster health visualization
+- Self-monitoring capabilities within the distributed system
+
 ## Build/Lint/Test Commands
 - **Build main binary**: `go build -o ryx-node ./cmd/ryx-node`
 - **Build cluster tool**: `go build -o ryx-cluster ./cmd/ryx-cluster`
-- **Run spatial node**: `./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --zone datacenter_a --port 9010 --http-port 8010`
-- **Test spatial cluster**: `./ryx-cluster -cmd start -profile huge` (50 nodes with spatial awareness)
+- **Run spatial+chemistry node**: `./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --zone datacenter_a --port 9010 --http-port 8010`
+- **Test spatial+chemistry cluster**: `./ryx-cluster -cmd start -profile huge` (50 nodes with spatial awareness and chemistry)
+- **Test chemistry injection**: `curl -X POST localhost:8010/inject -d '{"type": "hydrogen", "energy": 15.5, "ttl": 60}'`
+- **Monitor chemistry**: `curl localhost:8010/chemistry/concentrations` and `curl localhost:8010/chemistry/stats`
 - **Test compilation**: `go build ./...`
 - **Format code**: `go fmt ./...`
 - **Run tests**: `go test ./...` (when tests are added)

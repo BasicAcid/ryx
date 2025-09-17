@@ -120,6 +120,11 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/spatial/barriers", s.handleSpatialBarriers)
 	mux.HandleFunc("/spatial/distance", s.handleSpatialDistance)
 
+	// Phase 4A: Chemistry endpoints
+	mux.HandleFunc("/chemistry/concentrations", s.handleChemistryConcentrations)
+	mux.HandleFunc("/chemistry/reactions", s.handleChemistryReactions)
+	mux.HandleFunc("/chemistry/stats", s.handleChemistryStats)
+
 	// Phase 3C.3a: Topology mapping endpoints
 	mux.HandleFunc("/topology/map", s.handleTopologyMap)
 	mux.HandleFunc("/topology/zones", s.handleTopologyZones)
@@ -214,10 +219,10 @@ func (s *Server) handleInject(w http.ResponseWriter, r *http.Request) {
 
 	// Parse request body
 	var request struct {
-		Type    string `json:"type"`
-		Content string `json:"content"`
-		Energy  int    `json:"energy"`
-		TTL     int    `json:"ttl"` // TTL in seconds
+		Type    string  `json:"type"`
+		Content string  `json:"content"`
+		Energy  float64 `json:"energy"`
+		TTL     int     `json:"ttl"` // TTL in seconds
 	}
 
 	log.Printf("handleInject: parsing request body")
@@ -1163,4 +1168,90 @@ func (s *Server) handleTopologyLive(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("handleTopologyLive: live topology update provided")
 	s.writeJSON(w, response)
+}
+
+// handleChemistryConcentrations returns current concentration state
+// Phase 4A: Chemistry monitoring
+func (s *Server) handleChemistryConcentrations(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	diffusionService := s.node.GetDiffusionService()
+	if diffusionService == nil {
+		log.Printf("handleChemistryConcentrations: diffusion service not available")
+		http.Error(w, "Diffusion service not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	chemEngine := diffusionService.GetChemistryEngine()
+	if chemEngine == nil {
+		log.Printf("handleChemistryConcentrations: chemistry engine not available")
+		http.Error(w, "Chemistry engine not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	concentrationState := chemEngine.GetConcentrationState()
+	log.Printf("handleChemistryConcentrations: returning concentration state")
+	s.writeJSON(w, concentrationState)
+}
+
+// handleChemistryReactions returns reaction history
+// Phase 4A: Chemistry monitoring
+func (s *Server) handleChemistryReactions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	diffusionService := s.node.GetDiffusionService()
+	if diffusionService == nil {
+		log.Printf("handleChemistryReactions: diffusion service not available")
+		http.Error(w, "Diffusion service not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	chemEngine := diffusionService.GetChemistryEngine()
+	if chemEngine == nil {
+		log.Printf("handleChemistryReactions: chemistry engine not available")
+		http.Error(w, "Chemistry engine not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	reactions := chemEngine.GetReactionHistory()
+	response := map[string]interface{}{
+		"reactions": reactions,
+		"count":     len(reactions),
+	}
+
+	log.Printf("handleChemistryReactions: returning %d reactions", len(reactions))
+	s.writeJSON(w, response)
+}
+
+// handleChemistryStats returns chemistry engine statistics
+// Phase 4A: Chemistry monitoring
+func (s *Server) handleChemistryStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	diffusionService := s.node.GetDiffusionService()
+	if diffusionService == nil {
+		log.Printf("handleChemistryStats: diffusion service not available")
+		http.Error(w, "Diffusion service not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	chemEngine := diffusionService.GetChemistryEngine()
+	if chemEngine == nil {
+		log.Printf("handleChemistryStats: chemistry engine not available")
+		http.Error(w, "Chemistry engine not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	stats := chemEngine.GetChemistryStats()
+	log.Printf("handleChemistryStats: returning chemistry statistics")
+	s.writeJSON(w, stats)
 }
