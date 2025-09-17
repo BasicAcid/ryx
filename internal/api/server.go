@@ -110,7 +110,6 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/config/", s.handleConfigParameter)
 
 	// Phase 3B: Advanced adaptive algorithm monitoring
-	mux.HandleFunc("/adaptive/metrics", s.handleAdaptiveMetrics)
 	mux.HandleFunc("/adaptive/neighbors", s.handleNeighborMetrics)
 	mux.HandleFunc("/adaptive/faults", s.handleFaultPatterns)
 	mux.HandleFunc("/adaptive/system", s.handleSystemMetrics)
@@ -126,15 +125,8 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/chemistry/reactions", s.handleChemistryReactions)
 	mux.HandleFunc("/chemistry/stats", s.handleChemistryStats)
 
-	// Phase 4B-Alt: Enhanced metrics endpoints for system hardening
-	mux.HandleFunc("/metrics/cluster", s.handleMetricsCluster)
-	mux.HandleFunc("/metrics/chemistry", s.handleMetricsChemistry)
-	mux.HandleFunc("/metrics/diffusion", s.handleMetricsDiffusion)
-	mux.HandleFunc("/metrics/spatial", s.handleMetricsSpatial)
-	mux.HandleFunc("/metrics/performance", s.handleMetricsPerformance)
-
-	// Prometheus time-series format endpoint
-	mux.HandleFunc("/prometheus", s.handlePrometheusMetrics)
+	// Phase 4B-Alt: Unified metrics endpoint (Prometheus standard)
+	mux.HandleFunc("/metrics", s.handleUnifiedMetrics)
 
 	// Phase 3C.3a: Topology mapping endpoints
 	mux.HandleFunc("/topology/map", s.handleTopologyMap)
@@ -1642,14 +1634,28 @@ func (s *Server) calculateDistance(spatialConfig interface{}, x, y, z float64) f
 	return 0
 }
 
-// handlePrometheusMetrics returns all metrics in Prometheus time-series format
-// Phase 4B-Alt: Standard time-series format for external monitoring
-func (s *Server) handlePrometheusMetrics(w http.ResponseWriter, r *http.Request) {
+// handleUnifiedMetrics provides both Prometheus and JSON metrics via format detection
+// Phase 4B-Alt: Unified metrics endpoint with smart format detection
+func (s *Server) handleUnifiedMetrics(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Smart format detection
+	format := r.URL.Query().Get("format")
+	accept := r.Header.Get("Accept")
+
+	// Default to Prometheus format (industry standard)
+	if format == "json" || strings.Contains(accept, "application/json") {
+		s.handleJSONMetrics(w, r)
+	} else {
+		s.handlePrometheusMetrics(w, r)
+	}
+}
+
+// handlePrometheusMetrics returns all metrics in Prometheus time-series format
+func (s *Server) handlePrometheusMetrics(w http.ResponseWriter, r *http.Request) {
 	// Set Prometheus content type
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 
@@ -1659,6 +1665,15 @@ func (s *Server) handlePrometheusMetrics(w http.ResponseWriter, r *http.Request)
 	// Write Prometheus format response
 	w.Write([]byte(promMetrics))
 	log.Printf("handlePrometheusMetrics: returned %d bytes of metrics", len(promMetrics))
+}
+
+// handleJSONMetrics returns comprehensive JSON metrics combining all data sources
+func (s *Server) handleJSONMetrics(w http.ResponseWriter, r *http.Request) {
+	// Collect all metrics from different sources
+	allMetrics := s.collectAllJSONMetrics()
+
+	log.Printf("handleJSONMetrics: returning comprehensive metrics")
+	s.writeJSON(w, allMetrics)
 }
 
 // collectPrometheusMetrics gathers all metrics and formats them for Prometheus
@@ -1861,4 +1876,218 @@ func (s *Server) collectPrometheusMetrics() string {
 	)
 
 	return strings.Join(metrics, "\n")
+}
+
+// collectAllJSONMetrics gathers comprehensive metrics from all sources
+func (s *Server) collectAllJSONMetrics() map[string]interface{} {
+	response := map[string]interface{}{
+		"timestamp": time.Now().Unix(),
+		"node_id":   s.node.ID(),
+	}
+
+	// Cluster metrics
+	if discoveryService := s.node.GetDiscoveryService(); discoveryService != nil {
+		neighbors := discoveryService.GetNeighbors()
+		totalNeighbors := len(neighbors)
+		healthyNeighbors := totalNeighbors // Assume healthy for now
+
+		healthPercentage := float64(0)
+		if totalNeighbors > 0 {
+			healthPercentage = float64(healthyNeighbors) / float64(totalNeighbors) * 100
+		}
+
+		response["cluster"] = map[string]interface{}{
+			"neighbor_count":    totalNeighbors,
+			"healthy_neighbors": healthyNeighbors,
+			"health_percentage": healthPercentage,
+			"zone_distribution": map[string]int{"unknown": totalNeighbors},
+		}
+	}
+
+	// Diffusion metrics
+	if diffusionService := s.node.GetDiffusionService(); diffusionService != nil {
+		storedMessagesMap := diffusionService.GetAllInfo()
+		totalMessages := len(storedMessagesMap)
+		totalEnergy := float64(0)
+		typeDistribution := make(map[string]int)
+		hopDistribution := make(map[int]int)
+		maxHops := 0
+
+		var ages []int64
+		now := time.Now().Unix()
+
+		for _, msg := range storedMessagesMap {
+			totalEnergy += msg.Energy
+			typeDistribution[msg.Type]++
+			hopDistribution[msg.Hops]++
+
+			if msg.Hops > maxHops {
+				maxHops = msg.Hops
+			}
+
+			age := now - msg.Timestamp
+			ages = append(ages, age)
+		}
+
+		avgEnergy := float64(0)
+		if totalMessages > 0 {
+			avgEnergy = totalEnergy / float64(totalMessages)
+		}
+
+		avgAge := int64(0)
+		if len(ages) > 0 {
+			var totalAge int64
+			for _, age := range ages {
+				totalAge += age
+			}
+			avgAge = totalAge / int64(len(ages))
+		}
+
+		response["diffusion"] = map[string]interface{}{
+			"total_messages":      totalMessages,
+			"total_energy":        totalEnergy,
+			"avg_energy":          avgEnergy,
+			"avg_message_age_sec": avgAge,
+			"type_distribution":   typeDistribution,
+			"hop_distribution":    hopDistribution,
+			"message_types":       len(typeDistribution),
+			"max_hops":            maxHops,
+		}
+	}
+
+	// Chemistry metrics
+	if diffusionService := s.node.GetDiffusionService(); diffusionService != nil {
+		if chemEngine := diffusionService.GetChemistryEngine(); chemEngine != nil {
+			concentrationState := chemEngine.GetConcentrationState()
+			reactions := chemEngine.GetReactionHistory()
+			stats := chemEngine.GetChemistryStats()
+
+			totalConcentration := float64(0)
+			maxConcentration := float64(0)
+			for _, concentration := range concentrationState.Concentrations {
+				totalConcentration += concentration
+				if concentration > maxConcentration {
+					maxConcentration = concentration
+				}
+			}
+
+			// Calculate reaction rate (reactions per minute)
+			recentReactions := 0
+			now := time.Now().Unix()
+			for _, reaction := range reactions {
+				if now-reaction.Timestamp < 60 { // Last minute
+					recentReactions++
+				}
+			}
+
+			avgConcentration := float64(0)
+			concentrationTypes := len(concentrationState.Concentrations)
+			if concentrationTypes > 0 {
+				avgConcentration = totalConcentration / float64(concentrationTypes)
+			}
+
+			response["chemistry"] = map[string]interface{}{
+				"concentration_types":  concentrationTypes,
+				"total_concentration":  totalConcentration,
+				"max_concentration":    maxConcentration,
+				"avg_concentration":    avgConcentration,
+				"total_reactions":      len(reactions),
+				"recent_reaction_rate": recentReactions,
+				"total_messages":       concentrationState.TotalMessages,
+				"message_types":        len(concentrationState.MessageCounts),
+				"last_update":          concentrationState.LastUpdate,
+				"concentrations":       concentrationState.Concentrations,
+				"chemistry_stats":      stats,
+			}
+		}
+	}
+
+	// Spatial metrics
+	if spatialConfig := s.node.GetSpatialConfig(); spatialConfig != nil {
+		hasCoords := spatialConfig.HasCoordinates()
+
+		spatialData := map[string]interface{}{
+			"spatial_enabled":  true,
+			"coord_system":     spatialConfig.CoordSystem,
+			"has_coordinates":  hasCoords,
+			"zone":             spatialConfig.Zone,
+			"same_zone_count":  0,
+			"cross_zone_count": 0,
+			"same_zone_ratio":  0.0,
+			"cross_zone_ratio": 0.0,
+			"zone_neighbors":   map[string]int{"needs_enhancement": 0},
+			"avg_distance":     0.0,
+			"min_distance":     0.0,
+			"max_distance":     0.0,
+			"distance_samples": 0,
+		}
+
+		if hasCoords && spatialConfig.X != nil && spatialConfig.Y != nil {
+			spatialData["coordinates"] = map[string]interface{}{
+				"x": *spatialConfig.X,
+				"y": *spatialConfig.Y,
+				"z": func() interface{} {
+					if spatialConfig.Z != nil {
+						return *spatialConfig.Z
+					}
+					return 0.0
+				}(),
+			}
+		}
+
+		response["spatial"] = spatialData
+	} else {
+		response["spatial"] = map[string]interface{}{
+			"spatial_enabled": false,
+			"coord_system":    "none",
+		}
+	}
+
+	// Performance metrics
+	startTime := time.Now()
+	statusData := s.node.GetStatus()
+	apiLatency := time.Since(startTime).Nanoseconds()
+
+	// Basic resource estimation
+	messageCount := 0
+	if diffusionService := s.node.GetDiffusionService(); diffusionService != nil {
+		allMessages := diffusionService.GetAllInfo()
+		messageCount = len(allMessages)
+	}
+
+	neighborCount := 0
+	if discoveryService := s.node.GetDiscoveryService(); discoveryService != nil {
+		neighborCount = len(discoveryService.GetNeighbors())
+	}
+
+	estimatedMemoryBytes := (messageCount * 1024) + (neighborCount * 256)
+
+	response["performance"] = map[string]interface{}{
+		"api_response_time_ns":   apiLatency,
+		"api_response_time_ms":   float64(apiLatency) / 1000000,
+		"stored_messages":        messageCount,
+		"neighbor_count":         neighborCount,
+		"estimated_memory_bytes": estimatedMemoryBytes,
+		"estimated_memory_kb":    estimatedMemoryBytes / 1024,
+		"status_check":           statusData != nil,
+	}
+
+	// Adaptive metrics (legacy Phase 3B data)
+	if behaviorMod := s.node.GetBehaviorModifier(); behaviorMod != nil {
+		if adaptiveMod, ok := behaviorMod.(*config.AdaptiveBehaviorModifier); ok {
+			systemMetrics := adaptiveMod.GetSystemMetrics()
+			response["adaptive"] = map[string]interface{}{
+				"system":             systemMetrics,
+				"adaptation_enabled": true,
+				"type":               "AdaptiveBehaviorModifier",
+			}
+		} else {
+			response["adaptive"] = map[string]interface{}{
+				"adaptation_enabled": false,
+				"type":               "DefaultBehaviorModifier",
+			}
+		}
+	}
+
+	return response
 }
