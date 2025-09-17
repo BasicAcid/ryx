@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -124,6 +125,16 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/chemistry/concentrations", s.handleChemistryConcentrations)
 	mux.HandleFunc("/chemistry/reactions", s.handleChemistryReactions)
 	mux.HandleFunc("/chemistry/stats", s.handleChemistryStats)
+
+	// Phase 4B-Alt: Enhanced metrics endpoints for system hardening
+	mux.HandleFunc("/metrics/cluster", s.handleMetricsCluster)
+	mux.HandleFunc("/metrics/chemistry", s.handleMetricsChemistry)
+	mux.HandleFunc("/metrics/diffusion", s.handleMetricsDiffusion)
+	mux.HandleFunc("/metrics/spatial", s.handleMetricsSpatial)
+	mux.HandleFunc("/metrics/performance", s.handleMetricsPerformance)
+
+	// Prometheus time-series format endpoint
+	mux.HandleFunc("/prometheus", s.handlePrometheusMetrics)
 
 	// Phase 3C.3a: Topology mapping endpoints
 	mux.HandleFunc("/topology/map", s.handleTopologyMap)
@@ -1254,4 +1265,600 @@ func (s *Server) handleChemistryStats(w http.ResponseWriter, r *http.Request) {
 	stats := chemEngine.GetChemistryStats()
 	log.Printf("handleChemistryStats: returning chemistry statistics")
 	s.writeJSON(w, stats)
+}
+
+// handleMetricsCluster returns comprehensive cluster health metrics
+// Phase 4B-Alt: Enhanced observability for cluster behavior
+func (s *Server) handleMetricsCluster(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	discoveryService := s.node.GetDiscoveryService()
+	if discoveryService == nil {
+		log.Printf("handleMetricsCluster: discovery service not available")
+		http.Error(w, "Discovery service not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	neighbors := discoveryService.GetNeighbors()
+
+	// Calculate neighbor health metrics
+	totalNeighbors := len(neighbors)
+	healthyNeighbors := totalNeighbors // For now, assume all returned neighbors are healthy
+	zoneDistribution := make(map[string]int)
+
+	for range neighbors {
+		// Note: types.Neighbor doesn't have zone info, will need to enhance this later
+		// For now, just count neighbors
+		zoneDistribution["unknown"]++
+	}
+
+	// Health percentage
+	healthPercentage := float64(0)
+	if totalNeighbors > 0 {
+		healthPercentage = float64(healthyNeighbors) / float64(totalNeighbors) * 100
+	}
+
+	metrics := map[string]interface{}{
+		"timestamp":         time.Now().Unix(),
+		"neighbor_count":    totalNeighbors,
+		"healthy_neighbors": healthyNeighbors,
+		"health_percentage": healthPercentage,
+		"zone_distribution": zoneDistribution,
+		"node_id":           s.node.ID(),
+		"note":              "Enhanced neighbor metrics require internal discovery service access",
+	}
+
+	log.Printf("handleMetricsCluster: returning cluster metrics for %d neighbors", totalNeighbors)
+	s.writeJSON(w, metrics)
+}
+
+// handleMetricsChemistry returns detailed chemistry engine metrics
+// Phase 4B-Alt: Chemistry-specific observability
+func (s *Server) handleMetricsChemistry(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	diffusionService := s.node.GetDiffusionService()
+	if diffusionService == nil {
+		log.Printf("handleMetricsChemistry: diffusion service not available")
+		http.Error(w, "Diffusion service not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	chemEngine := diffusionService.GetChemistryEngine()
+	if chemEngine == nil {
+		log.Printf("handleMetricsChemistry: chemistry engine not available")
+		http.Error(w, "Chemistry engine not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	concentrationState := chemEngine.GetConcentrationState()
+	reactions := chemEngine.GetReactionHistory()
+	stats := chemEngine.GetChemistryStats()
+
+	// Calculate concentration metrics
+	totalConcentration := float64(0)
+	maxConcentration := float64(0)
+	concentrationTypes := len(concentrationState.Concentrations)
+
+	for _, concentration := range concentrationState.Concentrations {
+		totalConcentration += concentration
+		if concentration > maxConcentration {
+			maxConcentration = concentration
+		}
+	}
+
+	// Calculate reaction rate (reactions per minute)
+	recentReactions := 0
+	now := time.Now().Unix()
+	for _, reaction := range reactions {
+		if now-reaction.Timestamp < 60 { // Last minute
+			recentReactions++
+		}
+	}
+
+	metrics := map[string]interface{}{
+		"timestamp":           time.Now().Unix(),
+		"concentration_types": concentrationTypes,
+		"total_concentration": totalConcentration,
+		"max_concentration":   maxConcentration,
+		"avg_concentration": func() float64 {
+			if concentrationTypes > 0 {
+				return totalConcentration / float64(concentrationTypes)
+			}
+			return 0
+		}(),
+		"total_reactions":      len(reactions),
+		"recent_reaction_rate": recentReactions, // reactions per minute
+		"total_messages":       concentrationState.TotalMessages,
+		"message_types":        len(concentrationState.MessageCounts),
+		"last_update":          concentrationState.LastUpdate,
+		"concentrations":       concentrationState.Concentrations,
+		"node_id":              s.node.ID(),
+		"chemistry_stats":      stats,
+	}
+
+	log.Printf("handleMetricsChemistry: returning chemistry metrics - %d types, %d reactions", concentrationTypes, len(reactions))
+	s.writeJSON(w, metrics)
+}
+
+// handleMetricsDiffusion returns message diffusion performance metrics
+// Phase 4B-Alt: Diffusion behavior observability
+func (s *Server) handleMetricsDiffusion(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	diffusionService := s.node.GetDiffusionService()
+	if diffusionService == nil {
+		log.Printf("handleMetricsDiffusion: diffusion service not available")
+		http.Error(w, "Diffusion service not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Get stored messages for analysis
+	storedMessagesMap := diffusionService.GetAllInfo()
+	storedMessages := make([]*types.InfoMessage, 0, len(storedMessagesMap))
+	for _, msg := range storedMessagesMap {
+		storedMessages = append(storedMessages, msg)
+	}
+
+	// Calculate diffusion metrics
+	totalMessages := len(storedMessages)
+	totalEnergy := float64(0)
+	energyDistribution := make(map[string]int) // Energy ranges
+	typeDistribution := make(map[string]int)
+	hopDistribution := make(map[int]int)
+
+	var ages []int64
+	now := time.Now().Unix()
+
+	for _, msg := range storedMessages {
+		totalEnergy += msg.Energy
+		typeDistribution[msg.Type]++
+		hopDistribution[msg.Hops]++
+
+		age := now - msg.Timestamp
+		ages = append(ages, age)
+
+		// Energy distribution buckets
+		switch {
+		case msg.Energy == 0:
+			energyDistribution["zero"]++
+		case msg.Energy < 1:
+			energyDistribution["low"]++
+		case msg.Energy < 10:
+			energyDistribution["medium"]++
+		default:
+			energyDistribution["high"]++
+		}
+	}
+
+	// Calculate average energy
+	avgEnergy := float64(0)
+	if totalMessages > 0 {
+		avgEnergy = totalEnergy / float64(totalMessages)
+	}
+
+	// Calculate average age
+	avgAge := int64(0)
+	if len(ages) > 0 {
+		var totalAge int64
+		for _, age := range ages {
+			totalAge += age
+		}
+		avgAge = totalAge / int64(len(ages))
+	}
+
+	metrics := map[string]interface{}{
+		"timestamp":           time.Now().Unix(),
+		"total_messages":      totalMessages,
+		"total_energy":        totalEnergy,
+		"avg_energy":          avgEnergy,
+		"avg_message_age_sec": avgAge,
+		"energy_distribution": energyDistribution,
+		"type_distribution":   typeDistribution,
+		"hop_distribution":    hopDistribution,
+		"message_types":       len(typeDistribution),
+		"max_hops": func() int {
+			max := 0
+			for hops := range hopDistribution {
+				if hops > max {
+					max = hops
+				}
+			}
+			return max
+		}(),
+		"node_id": s.node.ID(),
+	}
+
+	log.Printf("handleMetricsDiffusion: returning diffusion metrics for %d messages", totalMessages)
+	s.writeJSON(w, metrics)
+}
+
+// handleMetricsSpatial returns spatial computing performance metrics
+// Phase 4B-Alt: Spatial behavior observability
+func (s *Server) handleMetricsSpatial(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	spatialConfig := s.node.GetSpatialConfig()
+	if spatialConfig == nil {
+		// Return basic metrics for non-spatial nodes
+		metrics := map[string]interface{}{
+			"timestamp":       time.Now().Unix(),
+			"spatial_enabled": false,
+			"coord_system":    "none",
+			"node_id":         s.node.ID(),
+		}
+		s.writeJSON(w, metrics)
+		return
+	}
+
+	discoveryService := s.node.GetDiscoveryService()
+	neighbors := []*types.Neighbor{}
+	if discoveryService != nil {
+		neighbors = discoveryService.GetNeighbors()
+	}
+
+	// Calculate spatial metrics - simplified for now since types.Neighbor doesn't include spatial info
+	totalNeighbors := len(neighbors)
+	sameZoneCount := 0
+	crossZoneCount := 0
+	var distances []float64
+	zoneNeighbors := make(map[string]int)
+
+	// Note: Current types.Neighbor doesn't include spatial information
+	// We'll need to enhance this by accessing the internal discovery service neighbors
+	// For now, provide basic metrics
+	zoneNeighbors["needs_enhancement"] = totalNeighbors
+
+	// Calculate distance statistics
+	var avgDistance, minDistance, maxDistance float64
+	if len(distances) > 0 {
+		total := float64(0)
+		minDistance = distances[0]
+		maxDistance = distances[0]
+
+		for _, dist := range distances {
+			total += dist
+			if dist < minDistance {
+				minDistance = dist
+			}
+			if dist > maxDistance {
+				maxDistance = dist
+			}
+		}
+		avgDistance = total / float64(len(distances))
+	}
+
+	// Zone ratio calculation
+	totalNeighborsForRatio := sameZoneCount + crossZoneCount
+	sameZoneRatio := float64(0)
+	crossZoneRatio := float64(0)
+	if totalNeighborsForRatio > 0 {
+		sameZoneRatio = float64(sameZoneCount) / float64(totalNeighborsForRatio) * 100
+		crossZoneRatio = float64(crossZoneCount) / float64(totalNeighborsForRatio) * 100
+	}
+
+	metrics := map[string]interface{}{
+		"timestamp":        time.Now().Unix(),
+		"spatial_enabled":  true,
+		"coord_system":     spatialConfig.CoordSystem,
+		"has_coordinates":  spatialConfig.HasCoordinates(),
+		"zone":             spatialConfig.Zone,
+		"same_zone_count":  sameZoneCount,
+		"cross_zone_count": crossZoneCount,
+		"same_zone_ratio":  sameZoneRatio,
+		"cross_zone_ratio": crossZoneRatio,
+		"zone_neighbors":   zoneNeighbors,
+		"avg_distance":     avgDistance,
+		"min_distance":     minDistance,
+		"max_distance":     maxDistance,
+		"distance_samples": len(distances),
+		"coordinates": map[string]interface{}{
+			"x": spatialConfig.X,
+			"y": spatialConfig.Y,
+			"z": spatialConfig.Z,
+		},
+		"node_id": s.node.ID(),
+	}
+
+	log.Printf("handleMetricsSpatial: returning spatial metrics - zone ratio %.1f%%/%.1f%%", sameZoneRatio, crossZoneRatio)
+	s.writeJSON(w, metrics)
+}
+
+// handleMetricsPerformance returns API and processing performance metrics
+// Phase 4B-Alt: Performance observability
+func (s *Server) handleMetricsPerformance(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Basic performance metrics (we'll enhance these as we add more tracking)
+	startTime := time.Now()
+
+	// Test basic API responsiveness
+	statusData := s.node.GetStatus()
+	apiLatency := time.Since(startTime).Nanoseconds()
+
+	// Memory usage approximation (basic)
+	diffusionService := s.node.GetDiffusionService()
+	messageCount := 0
+	if diffusionService != nil {
+		allMessages := diffusionService.GetAllInfo()
+		messageCount = len(allMessages)
+	}
+
+	discoveryService := s.node.GetDiscoveryService()
+	neighborCount := 0
+	if discoveryService != nil {
+		neighborCount = len(discoveryService.GetNeighbors())
+	}
+
+	// Estimate memory usage (rough approximation)
+	estimatedMemoryBytes := (messageCount * 1024) + (neighborCount * 256) // Rough estimates
+
+	metrics := map[string]interface{}{
+		"timestamp":              time.Now().Unix(),
+		"api_response_time_ns":   apiLatency,
+		"api_response_time_ms":   float64(apiLatency) / 1000000,
+		"stored_messages":        messageCount,
+		"neighbor_count":         neighborCount,
+		"estimated_memory_bytes": estimatedMemoryBytes,
+		"estimated_memory_kb":    estimatedMemoryBytes / 1024,
+		"uptime_seconds":         time.Since(startTime).Seconds(), // This is just measurement time, we'll improve this
+		"node_id":                s.node.ID(),
+		"status_check":           statusData != nil,
+	}
+
+	log.Printf("handleMetricsPerformance: API latency %.2fms, %d messages, %d neighbors",
+		float64(apiLatency)/1000000, messageCount, neighborCount)
+	s.writeJSON(w, metrics)
+}
+
+// Helper function for distance calculation in spatial metrics
+func (s *Server) calculateDistance(spatialConfig interface{}, x, y, z float64) float64 {
+	// This is a simplified distance calculation for metrics
+	// In a real implementation, we'd use the proper spatial distance calculation
+	if config, ok := spatialConfig.(map[string]interface{}); ok {
+		if myX, xOk := config["x"].(float64); xOk {
+			if myY, yOk := config["y"].(float64); yOk {
+				dx := x - myX
+				dy := y - myY
+				return math.Sqrt(dx*dx + dy*dy)
+			}
+		}
+	}
+	return 0
+}
+
+// handlePrometheusMetrics returns all metrics in Prometheus time-series format
+// Phase 4B-Alt: Standard time-series format for external monitoring
+func (s *Server) handlePrometheusMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Set Prometheus content type
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+
+	// Collect all metrics and convert to Prometheus format
+	promMetrics := s.collectPrometheusMetrics()
+
+	// Write Prometheus format response
+	w.Write([]byte(promMetrics))
+	log.Printf("handlePrometheusMetrics: returned %d bytes of metrics", len(promMetrics))
+}
+
+// collectPrometheusMetrics gathers all metrics and formats them for Prometheus
+func (s *Server) collectPrometheusMetrics() string {
+	var metrics []string
+	nodeID := s.node.ID()
+
+	// Helper function to create base labels
+	baseLabels := func(additionalLabels ...string) string {
+		labels := []string{fmt.Sprintf("node_id=\"%s\"", nodeID)}
+		labels = append(labels, additionalLabels...)
+		return strings.Join(labels, ",")
+	}
+
+	// Cluster metrics
+	if discoveryService := s.node.GetDiscoveryService(); discoveryService != nil {
+		neighbors := discoveryService.GetNeighbors()
+		totalNeighbors := len(neighbors)
+		healthyNeighbors := totalNeighbors // Assume healthy for now
+
+		healthPercentage := float64(0)
+		if totalNeighbors > 0 {
+			healthPercentage = float64(healthyNeighbors) / float64(totalNeighbors) * 100
+		}
+
+		metrics = append(metrics,
+			"# HELP ryx_neighbors_total Total number of discovered neighbors",
+			"# TYPE ryx_neighbors_total gauge",
+			fmt.Sprintf("ryx_neighbors_total{%s} %d", baseLabels(), totalNeighbors),
+			"",
+			"# HELP ryx_neighbor_health_percentage Percentage of healthy neighbors",
+			"# TYPE ryx_neighbor_health_percentage gauge",
+			fmt.Sprintf("ryx_neighbor_health_percentage{%s} %.2f", baseLabels(), healthPercentage),
+			"",
+		)
+	}
+
+	// Diffusion metrics
+	if diffusionService := s.node.GetDiffusionService(); diffusionService != nil {
+		storedMessagesMap := diffusionService.GetAllInfo()
+		totalMessages := len(storedMessagesMap)
+		totalEnergy := float64(0)
+		typeDistribution := make(map[string]int)
+		maxHops := 0
+
+		for _, msg := range storedMessagesMap {
+			totalEnergy += msg.Energy
+			typeDistribution[msg.Type]++
+			if msg.Hops > maxHops {
+				maxHops = msg.Hops
+			}
+		}
+
+		avgEnergy := float64(0)
+		if totalMessages > 0 {
+			avgEnergy = totalEnergy / float64(totalMessages)
+		}
+
+		metrics = append(metrics,
+			"# HELP ryx_messages_stored_total Total number of stored messages",
+			"# TYPE ryx_messages_stored_total gauge",
+			fmt.Sprintf("ryx_messages_stored_total{%s} %d", baseLabels(), totalMessages),
+			"",
+			"# HELP ryx_message_energy_total Total energy of all stored messages",
+			"# TYPE ryx_message_energy_total gauge",
+			fmt.Sprintf("ryx_message_energy_total{%s} %.2f", baseLabels(), totalEnergy),
+			"",
+			"# HELP ryx_message_energy_avg Average energy per message",
+			"# TYPE ryx_message_energy_avg gauge",
+			fmt.Sprintf("ryx_message_energy_avg{%s} %.2f", baseLabels(), avgEnergy),
+			"",
+			"# HELP ryx_message_hops_max Maximum hops seen in stored messages",
+			"# TYPE ryx_message_hops_max gauge",
+			fmt.Sprintf("ryx_message_hops_max{%s} %d", baseLabels(), maxHops),
+			"",
+		)
+
+		// Per-type message counts
+		if len(typeDistribution) > 0 {
+			metrics = append(metrics,
+				"# HELP ryx_messages_by_type_total Number of messages by type",
+				"# TYPE ryx_messages_by_type_total gauge",
+			)
+			for msgType, count := range typeDistribution {
+				labels := baseLabels(fmt.Sprintf("message_type=\"%s\"", msgType))
+				metrics = append(metrics, fmt.Sprintf("ryx_messages_by_type_total{%s} %d", labels, count))
+			}
+			metrics = append(metrics, "")
+		}
+	}
+
+	// Chemistry metrics
+	if diffusionService := s.node.GetDiffusionService(); diffusionService != nil {
+		if chemEngine := diffusionService.GetChemistryEngine(); chemEngine != nil {
+			concentrationState := chemEngine.GetConcentrationState()
+			reactions := chemEngine.GetReactionHistory()
+
+			totalConcentration := float64(0)
+			for _, concentration := range concentrationState.Concentrations {
+				totalConcentration += concentration
+			}
+
+			metrics = append(metrics,
+				"# HELP ryx_chemistry_total_concentration Sum of all chemical concentrations",
+				"# TYPE ryx_chemistry_total_concentration gauge",
+				fmt.Sprintf("ryx_chemistry_total_concentration{%s} %.4f", baseLabels(), totalConcentration),
+				"",
+				"# HELP ryx_chemistry_reactions_total Total number of chemical reactions",
+				"# TYPE ryx_chemistry_reactions_total counter",
+				fmt.Sprintf("ryx_chemistry_reactions_total{%s} %d", baseLabels(), len(reactions)),
+				"",
+				"# HELP ryx_chemistry_message_types Number of different chemical message types",
+				"# TYPE ryx_chemistry_message_types gauge",
+				fmt.Sprintf("ryx_chemistry_message_types{%s} %d", baseLabels(), len(concentrationState.Concentrations)),
+				"",
+			)
+
+			// Per-chemical concentrations
+			if len(concentrationState.Concentrations) > 0 {
+				metrics = append(metrics,
+					"# HELP ryx_chemistry_concentration Chemical concentration by type",
+					"# TYPE ryx_chemistry_concentration gauge",
+				)
+				for chemType, concentration := range concentrationState.Concentrations {
+					labels := baseLabels(fmt.Sprintf("chemical_type=\"%s\"", chemType))
+					metrics = append(metrics, fmt.Sprintf("ryx_chemistry_concentration{%s} %.4f", labels, concentration))
+				}
+				metrics = append(metrics, "")
+			}
+		}
+	}
+
+	// Spatial metrics
+	if spatialConfig := s.node.GetSpatialConfig(); spatialConfig != nil {
+		spatialEnabled := 1
+		hasCoords := 0
+		if spatialConfig.HasCoordinates() {
+			hasCoords = 1
+		}
+
+		coordLabels := baseLabels(
+			fmt.Sprintf("coord_system=\"%s\"", spatialConfig.CoordSystem),
+			fmt.Sprintf("zone=\"%s\"", spatialConfig.Zone),
+		)
+
+		metrics = append(metrics,
+			"# HELP ryx_spatial_enabled Whether spatial computing is enabled (1=enabled, 0=disabled)",
+			"# TYPE ryx_spatial_enabled gauge",
+			fmt.Sprintf("ryx_spatial_enabled{%s} %d", coordLabels, spatialEnabled),
+			"",
+			"# HELP ryx_spatial_has_coordinates Whether node has coordinate information",
+			"# TYPE ryx_spatial_has_coordinates gauge",
+			fmt.Sprintf("ryx_spatial_has_coordinates{%s} %d", coordLabels, hasCoords),
+			"",
+		)
+
+		if spatialConfig.HasCoordinates() && spatialConfig.X != nil && spatialConfig.Y != nil {
+			metrics = append(metrics,
+				"# HELP ryx_spatial_coordinate_x Node X coordinate",
+				"# TYPE ryx_spatial_coordinate_x gauge",
+				fmt.Sprintf("ryx_spatial_coordinate_x{%s} %.6f", coordLabels, *spatialConfig.X),
+				"",
+				"# HELP ryx_spatial_coordinate_y Node Y coordinate",
+				"# TYPE ryx_spatial_coordinate_y gauge",
+				fmt.Sprintf("ryx_spatial_coordinate_y{%s} %.6f", coordLabels, *spatialConfig.Y),
+				"",
+			)
+			if spatialConfig.Z != nil {
+				metrics = append(metrics,
+					"# HELP ryx_spatial_coordinate_z Node Z coordinate",
+					"# TYPE ryx_spatial_coordinate_z gauge",
+					fmt.Sprintf("ryx_spatial_coordinate_z{%s} %.6f", coordLabels, *spatialConfig.Z),
+					"",
+				)
+			}
+		}
+	}
+
+	// Performance metrics
+	startTime := time.Now()
+	statusData := s.node.GetStatus()
+	apiLatency := time.Since(startTime).Nanoseconds()
+
+	metrics = append(metrics,
+		"# HELP ryx_api_response_time_milliseconds API response time in milliseconds",
+		"# TYPE ryx_api_response_time_milliseconds gauge",
+		fmt.Sprintf("ryx_api_response_time_milliseconds{%s,endpoint=\"status\"} %.3f", baseLabels(), float64(apiLatency)/1000000),
+		"",
+		"# HELP ryx_status_check_success Whether status check succeeded (1=success, 0=failure)",
+		"# TYPE ryx_status_check_success gauge",
+	)
+
+	statusSuccess := 0
+	if statusData != nil {
+		statusSuccess = 1
+	}
+	metrics = append(metrics,
+		fmt.Sprintf("ryx_status_check_success{%s} %d", baseLabels(), statusSuccess),
+		"",
+	)
+
+	return strings.Join(metrics, "\n")
 }
