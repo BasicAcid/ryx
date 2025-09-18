@@ -210,31 +210,41 @@ func (n *Node) Stop() {
 	log.Printf("Node %s stopped", n.id)
 }
 
-// GetStatus returns current node status
+// GetStatus returns current node status (lock-free to prevent deadlocks)
 func (n *Node) GetStatus() map[string]interface{} {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-
+	// Build status without holding node mutex to prevent deadlocks
+	// If we can respond to HTTP requests, the node is effectively "running"
 	status := map[string]interface{}{
-		"node_id":    n.id,
-		"cluster_id": n.config.ClusterID,
-		"port":       n.config.Port,
-		"http_port":  n.config.HTTPPort,
-		"running":    n.running,
+		"node_id":    n.id,                            // immutable after creation
+		"cluster_id": n.config.ClusterID,              // immutable after creation
+		"port":       n.config.Port,                   // immutable after creation
+		"http_port":  n.config.HTTPPort,               // immutable after creation
+		"running":    true,                            // if we can respond, we're running
 		"uptime":     time.Since(time.Now()).String(), // TODO: track actual uptime
 	}
 
-	// Add service-specific status
+	// Add service-specific status (each service has its own mutex protection)
 	if n.discovery != nil {
-		status["neighbors"] = n.discovery.GetNeighbors()
+		neighbors := n.discovery.GetNeighbors()
+		if neighbors != nil {
+			status["neighbors"] = neighbors
+		} else {
+			status["neighbors"] = []interface{}{}
+		}
+	} else {
+		status["neighbors"] = []interface{}{}
 	}
 
 	if n.diffusion != nil {
-		status["diffusion"] = n.diffusion.GetStats()
+		if diffusionStats := n.diffusion.GetStats(); diffusionStats != nil {
+			status["diffusion"] = diffusionStats
+		}
 	}
 
 	if n.computation != nil {
-		status["computation"] = n.computation.GetComputationStats()
+		if computationStats := n.computation.GetComputationStats(); computationStats != nil {
+			status["computation"] = computationStats
+		}
 	}
 
 	// Phase 3C.1: Add spatial configuration to status
@@ -254,7 +264,20 @@ func (n *Node) GetStatus() map[string]interface{} {
 		if n.barrierManager != nil {
 			barriers := n.barrierManager.GetAllBarriers()
 			status["barriers_count"] = len(barriers)
+		} else {
+			status["barriers_count"] = 0
 		}
+	} else {
+		status["spatial"] = map[string]interface{}{
+			"coord_system": "none",
+			"x":            nil,
+			"y":            nil,
+			"z":            nil,
+			"zone":         "default",
+			"barriers":     nil,
+			"has_coords":   false,
+		}
+		status["barriers_count"] = 0
 	}
 
 	return status

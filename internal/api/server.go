@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -133,6 +134,10 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/topology/zones", s.handleTopologyZones)
 	mux.HandleFunc("/topology/live", s.handleTopologyLive)
 
+	// Phase 4B-Alt: Web Dashboard
+	mux.HandleFunc("/dashboard", s.handleDashboard)
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static/"))))
+
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
 		Handler: s.enableCORS(mux),
@@ -170,6 +175,31 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := s.node.GetStatus()
+
+	// Add neighbor_count field for cluster tool compatibility
+	if neighborsValue, exists := status["neighbors"]; exists {
+		switch neighbors := neighborsValue.(type) {
+		case []interface{}:
+			status["neighbor_count"] = len(neighbors)
+		case []map[string]interface{}:
+			status["neighbor_count"] = len(neighbors)
+		case []*types.Neighbor:
+			status["neighbor_count"] = len(neighbors)
+		case []types.Neighbor:
+			status["neighbor_count"] = len(neighbors)
+		default:
+			// Use reflection as fallback
+			v := reflect.ValueOf(neighbors)
+			if v.Kind() == reflect.Slice {
+				status["neighbor_count"] = v.Len()
+			} else {
+				status["neighbor_count"] = 0
+			}
+		}
+	} else {
+		status["neighbor_count"] = 0
+	}
+
 	s.writeJSON(w, status)
 }
 
@@ -2090,4 +2120,154 @@ func (s *Server) collectAllJSONMetrics() map[string]interface{} {
 	}
 
 	return response
+}
+
+// handleDashboard serves the web dashboard
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Serve the dashboard HTML
+	dashboardHTML := `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ryx Distributed Computing Dashboard</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <div class="header">
+        <h1>Ryx Distributed Computing Dashboard</h1>
+        <div class="cluster-status">
+            <span id="cluster-info">Connecting...</span>
+            <span id="connection-status" class="status-connecting">●</span>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="sidebar">
+            <div class="panel">
+                <h3>Cluster Overview</h3>
+                <div class="stats">
+                    <div class="stat">
+                        <span class="stat-label">Total Nodes:</span>
+                        <span id="total-nodes" class="stat-value">0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Healthy Nodes:</span>
+                        <span id="healthy-nodes" class="stat-value">0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Active Tasks:</span>
+                        <span id="active-tasks" class="stat-value">0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Messages/sec:</span>
+                        <span id="message-rate" class="stat-value">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Submit Task</h3>
+                <form id="task-form">
+                    <div class="form-group">
+                        <label for="task-type">Task Type:</label>
+                        <select id="task-type" name="type">
+                            <option value="wordcount">Word Count</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="task-data">Input Data:</label>
+                        <textarea id="task-data" name="data" placeholder="Enter text to process..." rows="4"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="task-energy">Energy:</label>
+                        <input type="number" id="task-energy" name="energy" value="10" min="1" max="100" step="0.1">
+                    </div>
+                    <button type="submit">Submit Task</button>
+                </form>
+            </div>
+
+            <div class="panel">
+                <h3>Recent Tasks</h3>
+                <div id="recent-tasks" class="task-list">
+                    <div class="no-tasks">No tasks submitted yet</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="tab-container">
+                <div class="tabs">
+                    <button class="tab-button active" data-tab="nodes">Node Grid</button>
+                    <button class="tab-button" data-tab="topology">Network Topology</button>
+                    <button class="tab-button" data-tab="chemistry">Chemistry Monitor</button>
+                </div>
+
+                <div id="nodes-tab" class="tab-content active">
+                    <div class="tab-header">
+                        <h2>Node Grid</h2>
+                        <div class="legend">
+                            <span class="legend-item"><span class="node-indicator healthy"></span> Healthy</span>
+                            <span class="legend-item"><span class="node-indicator warning"></span> Warning</span>
+                            <span class="legend-item"><span class="node-indicator error"></span> Error</span>
+                            <span class="legend-item"><span class="node-indicator offline"></span> Offline</span>
+                        </div>
+                    </div>
+                    <div id="node-grid" class="node-grid">
+                        <div class="loading">Discovering nodes...</div>
+                    </div>
+                </div>
+
+                <div id="topology-tab" class="tab-content">
+                    <div class="tab-header">
+                        <h2>Network Topology</h2>
+                        <div class="topology-controls">
+                            <button id="layout-button">Force Layout</button>
+                            <button id="zoom-fit">Fit to Screen</button>
+                        </div>
+                    </div>
+                    <div id="topology-view" class="topology-container">
+                        <svg id="topology-svg" width="100%" height="500px"></svg>
+                    </div>
+                </div>
+
+                <div id="chemistry-tab" class="tab-content">
+                    <div class="tab-header">
+                        <h2>Chemistry Monitor</h2>
+                        <div class="chemistry-controls">
+                            <button id="inject-chemical">Inject Chemical</button>
+                        </div>
+                    </div>
+                    <div class="chemistry-container">
+                        <div class="chemistry-stats">
+                            <div class="chem-stat">
+                                <span class="chem-label">Total Concentration:</span>
+                                <span id="total-concentration" class="chem-value">0.00</span>
+                            </div>
+                            <div class="chem-stat">
+                                <span class="chem-label">Active Reactions:</span>
+                                <span id="active-reactions" class="chem-value">0</span>
+                            </div>
+                        </div>
+                        <div id="chemistry-grid" class="chemistry-grid">
+                            <div class="loading">Loading chemistry data...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>`
+
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(dashboardHTML))
 }

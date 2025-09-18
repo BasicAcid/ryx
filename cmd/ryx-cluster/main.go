@@ -428,8 +428,16 @@ func (c *Cluster) PrintDetailedStatus() {
 
 		// Extract neighbor count
 		neighbors := 0
-		if neighborsData, ok := status["neighbors"].(map[string]interface{}); ok {
+		if neighborCount, ok := status["neighbor_count"].(float64); ok {
+			neighbors = int(neighborCount)
+			totalNeighbors += neighbors
+		} else if neighborsData, ok := status["neighbors"].(map[string]interface{}); ok {
+			// Fallback to map-based counting for backward compatibility
 			neighbors = len(neighborsData)
+			totalNeighbors += neighbors
+		} else if neighborsArray, ok := status["neighbors"].([]interface{}); ok {
+			// Handle array-based neighbors
+			neighbors = len(neighborsArray)
 			totalNeighbors += neighbors
 		}
 
@@ -481,9 +489,15 @@ func (c *Cluster) InjectInformation(content string, energy, ttl, targetNode int)
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Send injection request
+	// Send injection request with timeout
 	url := fmt.Sprintf("http://localhost:%d/inject", nodeInfo.HTTPPort)
-	resp, err := http.Post(url, "application/json", strings.NewReader(string(requestJSON)))
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 5 * time.Second, // 5 second timeout for injection
+	}
+
+	resp, err := client.Post(url, "application/json", strings.NewReader(string(requestJSON)))
 	if err != nil {
 		return fmt.Errorf("failed to send injection request: %w", err)
 	}
@@ -530,10 +544,16 @@ func (c *Cluster) InjectInformation(content string, energy, ttl, targetNode int)
 	return nil
 }
 
-// getNodeStatus gets status from a node's HTTP API
+// getNodeStatus gets status from a node's HTTP API with timeout
 func (c *Cluster) getNodeStatus(httpPort int) (map[string]interface{}, error) {
 	url := fmt.Sprintf("http://localhost:%d/status", httpPort)
-	resp, err := http.Get(url)
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 3 * time.Second, // 3 second timeout
+	}
+
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -544,10 +564,16 @@ func (c *Cluster) getNodeStatus(httpPort int) (map[string]interface{}, error) {
 	return status, err
 }
 
-// getNodeInfo gets info from a node's HTTP API
+// getNodeInfo gets info from a node's HTTP API with timeout
 func (c *Cluster) getNodeInfo(httpPort int) (map[string]interface{}, error) {
 	url := fmt.Sprintf("http://localhost:%d/info", httpPort)
-	resp, err := http.Get(url)
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 3 * time.Second, // 3 second timeout
+	}
+
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}
