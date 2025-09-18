@@ -76,17 +76,23 @@ ryx-cluster inject word-count     # Distribute computation
 ryx-cluster chaos --kill 30%     # Test fault tolerance
 ```
 
-### 3. `ryx-control` - Web Dashboard (Optional)
-**Observability and management**: Web interface for monitoring and controlling the network.
+### 3. `ryx-dashboard` - Web UI for Cluster Observation
+**Real-time cluster visualization**: Browser-based interface for observing distributed behavior.
 
 **Capabilities**:
-- Real-time network topology visualization
-- Computation progress monitoring and result viewing
-- Task injection interface
-- Performance metrics and health dashboards
-- Energy flow visualization
+- **Node Grid View**: Live status grid showing all cluster nodes with health indicators
+- **Network Topology Visualization**: Real-time display of node connections and energy flows
+- **Task Management Interface**: Submit computational tasks and monitor progress
+- **Spatial Awareness Display**: Visualize physical zones, coordinate systems, and distance relationships
+- **Chemistry Monitoring**: Real-time chemical concentrations, reactions, and diffusion patterns
+- **Performance Metrics**: CPU, memory, network usage across all nodes
+- **Interactive Controls**: Basic cluster management and configuration
 
-**Connection**: Connects to any node in network (no special control nodes required)
+**Technical Implementation**:
+- **Frontend**: Modern SPA (React/Vue.js) with WebSocket live updates
+- **Backend Integration**: Uses existing HTTP APIs with enhanced metrics endpoints
+- **No Special Nodes**: Connects to any node in the network (fully distributed)
+- **Real-time Updates**: WebSocket streaming for live cluster state changes
 
 ## Implementation Phases
 
@@ -371,28 +377,35 @@ Spatial awareness ensures rear systems continue operation despite front damage
 **Strategic Decision**: Before adding more features, validate and optimize the current system for real-world deployment. Focus on making Ryx bulletproof for mission-critical applications.
 
 **Key deliverables**:
-- **Comprehensive monitoring**: Enhanced metrics APIs with performance tracking
+- **Web UI Dashboard**: Real-time cluster visualization with node grid and topology view
+- **Enhanced monitoring**: Improved metrics APIs with performance tracking
 - **Long-term stability**: 24+ hour continuous operation validation  
 - **Failure scenario testing**: Controlled hardware/network failure injection
 - **Resource optimization**: Memory/CPU profiling and optimization
 - **Production deployment**: Docker/systemd integration and deployment automation
-- **Observability stack**: Hybrid monitoring with external aggregation
 - **Stress testing**: Load testing and performance validation under stress
-- **Operations manual**: Production deployment and troubleshooting guides
+
+**Web UI Dashboard Features**:
+- **Node Grid Visualization**: Live status grid showing all cluster nodes with health indicators
+- **Network Topology View**: Real-time visualization of node connections and energy flows
+- **Task Monitoring**: Simple interface for submitting and monitoring computational tasks
+- **Spatial Awareness**: Visualize physical zones and coordinate systems
+- **Chemistry Monitoring**: Real-time display of chemical concentrations and reactions
+- **Basic Interactions**: Submit tasks, view results, monitor cluster health
 
 **Observability Architecture** (Hybrid Approach):
-- **Node-level metrics**: Enhanced `/metrics/*` endpoints with detailed performance data
-- **External aggregation**: Lightweight collector polling all nodes for global view
-- **Real-time dashboard**: External system showing cluster health and performance
+- **Enhanced Node APIs**: Detailed performance metrics at `/metrics/*` endpoints
+- **Web Dashboard**: Browser-based real-time cluster visualization
+- **External collector**: Optional lightweight polling for historical data
 - **Self-monitoring**: Nodes continue internal health monitoring and peer watching
-- **Alert system**: Automated detection of performance degradation and failures
+- **Real-time updates**: WebSocket-based live updates for dashboard
 
 **Target Outcomes**:
+- ✅ **Visual cluster observation**: Real-time understanding of distributed behavior
 - ✅ **Production confidence**: System ready for real-world mission-critical deployment
+- ✅ **User-friendly interface**: Easy interaction with distributed cluster capabilities
 - ✅ **Debugging capability**: Comprehensive tooling for troubleshooting production issues
 - ✅ **Performance validation**: Actual data on system behavior under load and stress
-- ✅ **Failure resilience**: Validated recovery from hardware/network failures
-- ✅ **Operations readiness**: Complete deployment and management documentation
 
 #### Phase 4C: Advanced Chemistry Reactions (Future)
 **Goal**: Build on solid foundation with advanced chemical computing features
@@ -429,16 +442,16 @@ Spatial awareness ensures rear systems continue operation despite front damage
 - Life support system integration and emergency protocols
 - Autonomous mission planning and resource allocation
 
-### Phase 7: Advanced Observability and Control ⏳ PLANNED
-**Goal**: Professional interfaces for monitoring and controlling mission-critical systems
+### Phase 7: Advanced System Features ⏳ PLANNED
+**Goal**: Professional-grade capabilities for complex distributed computing scenarios
 
 **Key deliverables**:
-- Real-time 3D spatial network visualization
-- Chemistry reaction monitoring and concentration tracking
-- Mission timeline planning and long-term trend analysis
-- Emergency control interfaces for crisis management
-- Automated report generation for mission control
-- Fault tree analysis and failure prediction systems
+- Advanced computational executors (search, analytics, ML inference)
+- Multi-stage task pipelines and workflow management
+- Advanced chemistry reactions and system immune responses
+- Long-term persistence and data management
+- Mission timeline planning and autonomous operation
+- Advanced fault tolerance and self-healing capabilities
 
 ## Technical Architecture for Mission-Critical Systems
 
@@ -786,44 +799,49 @@ curl -X POST localhost:8010/config -H "Content-Type: application/json" \
 
 ### Phase 4B-Alt Implementation Plan
 
-**Week 1: Enhanced Metrics Foundation**
-- Expand `/metrics/performance`, `/metrics/cluster`, `/metrics/chemistry` endpoints
-- Add internal performance tracking to all services (CPU, memory, network)
-- Create standardized metrics format for external consumption
-- Performance baseline establishment
+**Step 1: Web Dashboard Foundation**
+- Create basic HTML/CSS/JS dashboard with node grid layout
+- Implement WebSocket connection to cluster nodes for live updates
+- Add simple task submission forms for computational tasks
+- Basic topology visualization using existing `/status` and `/spatial/neighbors` endpoints
 
-**Week 2: External Monitoring Stack**
-- Implement metrics collector (polls all nodes every 30s)
-- Create time-series database for historical performance data
-- Build real-time dashboard for cluster visualization
-- Basic alerting for node failures and performance degradation
+**Step 2: Enhanced Cluster Visualization**
+- Real-time node health indicators (CPU, memory, connectivity)
+- Network topology graph showing neighbor connections and energy flows
+- Spatial awareness display (zones, coordinates, distance relationships)
+- Chemistry monitoring (concentrations, reactions, diffusion patterns)
 
-**Week 3: Stress Testing & Validation**
-- 24+ hour continuous operation testing
-- Controlled failure injection (network partitions, node crashes)
-- Resource exhaustion testing (memory limits, CPU spikes)
-- Performance optimization based on metrics data
+**Step 3: System Validation & Hardening**
+- 24+ hour continuous operation testing with dashboard monitoring
+- Controlled failure injection (network partitions, node crashes) with visual feedback
+- Resource usage optimization based on real-time metrics
+- Performance validation under various load conditions
 
-**Week 4: Production Readiness**
-- Docker/systemd service integration
-- Deployment automation and configuration management
-- Operations manual and troubleshooting guides
-- Real-world scenario validation
+**Step 4: Production Integration**
+- Docker/systemd service integration for easy deployment
+- Configuration management and deployment automation
+- Basic operations documentation and troubleshooting guides
+- Real-world scenario validation with visual monitoring
 
 ### Expected Outcomes
 
-**Production Confidence**:
+**Enhanced User Experience**:
+- ✅ Visual understanding of distributed cluster behavior through real-time dashboard
+- ✅ Easy interaction with cluster capabilities via web interface
+- ✅ Real-time observation of spatial computing and chemistry diffusion
+- ✅ Simple task submission and result monitoring
+
+**Production Readiness**:
 - ✅ System validated for real-world mission-critical deployment
-- ✅ Comprehensive debugging and troubleshooting capabilities
+- ✅ Comprehensive visual debugging and troubleshooting capabilities
 - ✅ Actual performance data under load and stress conditions
-- ✅ Validated recovery from hardware/network failures
 - ✅ Complete deployment and operations documentation
 
 **Foundation for Advanced Features**:
-- ✅ Stable platform for Phase 4C advanced chemistry reactions
-- ✅ Monitoring infrastructure for complex system behaviors
+- ✅ Stable platform for advanced chemistry reactions and computational features
+- ✅ Visual monitoring infrastructure for complex distributed behaviors
 - ✅ Performance baseline for measuring future enhancements
-- ✅ Production deployment patterns for real-world applications
+- ✅ User-friendly interface for advanced system capabilities
 
 **Spatial + Chemistry Computing Characteristics (Current)**:
 - **Multi-modal coordinates**: GPS, relative, logical, none systems operational
