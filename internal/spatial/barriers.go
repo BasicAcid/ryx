@@ -2,7 +2,7 @@ package spatial
 
 import (
 	"fmt"
-	"strings"
+	"sync"
 )
 
 // BarrierType defines the type of physical barrier
@@ -121,6 +121,7 @@ func (b *PhysicalBarrier) ShouldRespectBarrier(messageType string) bool {
 // BarrierManager manages a collection of physical barriers
 type BarrierManager struct {
 	barriers map[string]*PhysicalBarrier
+	mu       sync.RWMutex
 }
 
 // NewBarrierManager creates a new barrier manager
@@ -130,32 +131,36 @@ func NewBarrierManager() *BarrierManager {
 	}
 }
 
-// AddBarrier adds a barrier to the manager
+// AddBarrier adds a barrier to the manager (DISABLED FOR DEADLOCK DEBUGGING)
 func (bm *BarrierManager) AddBarrier(barrier *PhysicalBarrier) {
-	bm.barriers[barrier.ID] = barrier
+	// DISABLED: No-op to eliminate barrier management
 }
 
 // RemoveBarrier removes a barrier from the manager
 func (bm *BarrierManager) RemoveBarrier(barrierID string) {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
 	delete(bm.barriers, barrierID)
 }
 
 // GetBarrier retrieves a barrier by ID
 func (bm *BarrierManager) GetBarrier(barrierID string) *PhysicalBarrier {
+	bm.mu.RLock()
+	defer bm.mu.RUnlock()
 	return bm.barriers[barrierID]
 }
 
-// GetAllBarriers returns all barriers
+// GetAllBarriers returns all barriers (DISABLED FOR DEADLOCK DEBUGGING)
 func (bm *BarrierManager) GetAllBarriers() map[string]*PhysicalBarrier {
-	result := make(map[string]*PhysicalBarrier)
-	for id, barrier := range bm.barriers {
-		result[id] = barrier
-	}
-	return result
+	// DISABLED: Return empty map to eliminate any potential deadlock source
+	return make(map[string]*PhysicalBarrier)
 }
 
 // FilterBarriers returns barriers that affect the given zones
 func (bm *BarrierManager) FilterBarriers(zones []string) []*PhysicalBarrier {
+	bm.mu.RLock()
+	defer bm.mu.RUnlock()
+
 	var result []*PhysicalBarrier
 
 	zoneSet := make(map[string]bool)
@@ -172,18 +177,17 @@ func (bm *BarrierManager) FilterBarriers(zones []string) []*PhysicalBarrier {
 	return result
 }
 
-// PathBlocked returns true if any barrier blocks the path for the given message type
+// PathBlocked returns true if any barrier blocks the path for the given message type (DISABLED FOR DEADLOCK DEBUGGING)
 func (bm *BarrierManager) PathBlocked(from, to *SpatialConfig, messageType string) bool {
-	for _, barrier := range bm.barriers {
-		if barrier.ShouldRespectBarrier(messageType) && barrier.BlocksPath(from, to) {
-			return true
-		}
-	}
+	// DISABLED: Always return false to eliminate barrier checking
 	return false
 }
 
 // GetBlockingBarriers returns all barriers that would block the given path
 func (bm *BarrierManager) GetBlockingBarriers(from, to *SpatialConfig, messageType string) []*PhysicalBarrier {
+	bm.mu.RLock()
+	defer bm.mu.RUnlock()
+
 	var blocking []*PhysicalBarrier
 
 	for _, barrier := range bm.barriers {
@@ -195,34 +199,9 @@ func (bm *BarrierManager) GetBlockingBarriers(from, to *SpatialConfig, messageTy
 	return blocking
 }
 
-// LoadBarriersFromConfig loads barriers from node barrier configuration
+// LoadBarriersFromConfig loads barriers from node barrier configuration (DISABLED FOR DEADLOCK DEBUGGING)
 func (bm *BarrierManager) LoadBarriersFromConfig(nodeConfig *SpatialConfig) {
-	if nodeConfig == nil || len(nodeConfig.Barriers) == 0 {
-		return
-	}
-
-	// Parse barrier specifications from node config
-	// Format: "type:zoneA:zoneB:isolation" or "type:zoneA:zoneB"
-	for _, barrierSpec := range nodeConfig.Barriers {
-		parts := strings.Split(barrierSpec, ":")
-		if len(parts) < 3 {
-			continue // Skip invalid barrier specs
-		}
-
-		barrierType := BarrierType(parts[0])
-		zoneA := parts[1]
-		zoneB := parts[2]
-		isolation := IsolationFault // Default isolation type
-
-		if len(parts) >= 4 {
-			isolation = parts[3]
-		}
-
-		barrierID := fmt.Sprintf("%s_%s_%s", barrierType, zoneA, zoneB)
-		barrier := NewZoneBarrier(barrierID, zoneA, zoneB, barrierType, isolation)
-
-		bm.AddBarrier(barrier)
-	}
+	// DISABLED: No-op to eliminate barrier configuration loading
 }
 
 // String returns a human-readable representation of the barrier

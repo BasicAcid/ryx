@@ -371,9 +371,9 @@ func (s *Service) executeTaskAsync(taskID string, task *types.ComputationTask, e
 
 	log.Printf("Completed task %s in %dms", taskID, executionTime)
 
-	// Propagate result through diffusion system if available
+	// Propagate result through diffusion system if available (async to prevent deadlock)
 	if s.diffusion != nil {
-		s.propagateResult(result)
+		go s.propagateResult(result)
 	}
 }
 

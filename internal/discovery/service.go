@@ -131,8 +131,8 @@ func (s *Service) Start(ctx context.Context) error {
 	// Start cleanup routine
 	go s.cleanupLoop()
 
-	// Phase 3B: Start topology optimization routine
-	go s.topologyOptimizationLoop()
+	// Phase 3B: DISABLED topology optimization routine to prevent deadlocks
+	// go s.topologyOptimizationLoop()
 
 	return nil
 }

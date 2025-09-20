@@ -1,8 +1,9 @@
 # Binaries
 ryx-node
 ryx-cluster
+ryx-dashboard
 
-# Runtime files  
+# Runtime files
 .ryx-cluster.pids
 
 # Editor temporary files

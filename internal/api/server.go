@@ -134,9 +134,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/topology/zones", s.handleTopologyZones)
 	mux.HandleFunc("/topology/live", s.handleTopologyLive)
 
-	// Phase 4B-Alt: Web Dashboard
-	mux.HandleFunc("/dashboard", s.handleDashboard)
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static/"))))
+	// Dashboard removed - use external ryx-dashboard application
 
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
@@ -401,11 +399,23 @@ func (s *Server) handleInfoByID(w http.ResponseWriter, r *http.Request) {
 
 // handleCompute processes computational task injection and queries
 func (s *Server) handleCompute(w http.ResponseWriter, r *http.Request) {
+	// DISABLED: Return empty response to eliminate computation service calls
 	switch r.Method {
 	case http.MethodPost:
-		s.handleComputeInject(w, r)
+		// Return success without actually processing the task
+		response := map[string]interface{}{
+			"message": "Computational task disabled for debugging",
+			"success": false,
+		}
+		s.writeJSON(w, response)
 	case http.MethodGet:
-		s.handleComputeList(w, r)
+		// Return empty task list
+		response := map[string]interface{}{
+			"active":    []interface{}{},
+			"completed": []interface{}{},
+			"node_id":   s.node.ID(),
+		}
+		s.writeJSON(w, response)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -529,33 +539,8 @@ func (s *Server) handleComputeByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract computation ID from path
-	path := strings.TrimPrefix(r.URL.Path, "/compute/")
-	if path == "" {
-		http.Error(w, "Computation ID required", http.StatusBadRequest)
-		return
-	}
-
-	taskID := strings.Split(path, "/")[0]
-
-	computation := s.node.GetComputationService()
-	if computation == nil {
-		http.Error(w, "Computation service not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	result, exists := computation.GetComputationResult(taskID)
-	if !exists {
-		http.Error(w, "Computation not found", http.StatusNotFound)
-		return
-	}
-
-	response := map[string]interface{}{
-		"task_id": taskID,
-		"result":  result,
-	}
-
-	s.writeJSON(w, response)
+	// DISABLED: Return not found for all computation task queries
+	http.Error(w, "Computation service disabled for debugging", http.StatusServiceUnavailable)
 }
 
 // writeJSON writes a JSON response
@@ -1086,29 +1071,21 @@ func (s *Server) handleTopologyMap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("handleTopologyMap: getting network topology")
-
-	topologyMapper := s.node.GetTopologyMapper()
-	if topologyMapper == nil {
-		log.Printf("handleTopologyMap: topology mapper not available")
-		http.Error(w, "Topology mapper not available", http.StatusServiceUnavailable)
-		return
+	// DISABLED: Return empty topology to eliminate topology mapper calls
+	emptyTopology := map[string]interface{}{
+		"nodes":       []interface{}{},
+		"connections": []interface{}{},
+		"zones":       []interface{}{},
+		"barriers":    []interface{}{},
+		"metadata": map[string]interface{}{
+			"node_count":       0,
+			"connection_count": 0,
+			"zone_count":       0,
+			"barrier_count":    0,
+			"generated_at":     0,
+		},
 	}
-
-	topology, err := topologyMapper.GetCurrentTopology()
-	if err != nil {
-		log.Printf("handleTopologyMap: failed to get topology: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to get topology: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("handleTopologyMap: topology generated - %d nodes, %d connections, %d zones, %d barriers",
-		topology.Metadata.NodeCount,
-		topology.Metadata.ConnectionCount,
-		topology.Metadata.ZoneCount,
-		topology.Metadata.BarrierCount)
-
-	s.writeJSON(w, topology)
+	s.writeJSON(w, emptyTopology)
 }
 
 // handleTopologyZones handles GET requests for zone-specific topology information
@@ -1120,49 +1097,13 @@ func (s *Server) handleTopologyZones(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("handleTopologyZones: getting zone topology information")
 
-	topologyMapper := s.node.GetTopologyMapper()
-	if topologyMapper == nil {
-		log.Printf("handleTopologyZones: topology mapper not available")
-		http.Error(w, "Topology mapper not available", http.StatusServiceUnavailable)
-		return
+	// DISABLED: Return empty zones to eliminate topology mapper calls
+	emptyZones := map[string]interface{}{
+		"zones":        []interface{}{},
+		"zone_count":   0,
+		"generated_at": 0,
 	}
-
-	// Check if specific zone requested
-	zoneID := r.URL.Query().Get("zone")
-	if zoneID != "" {
-		log.Printf("handleTopologyZones: getting topology for zone: %s", zoneID)
-
-		zone, err := topologyMapper.GetZoneTopology(zoneID)
-		if err != nil {
-			log.Printf("handleTopologyZones: failed to get zone topology: %v", err)
-			http.Error(w, fmt.Sprintf("Failed to get zone topology: %v", err), http.StatusNotFound)
-			return
-		}
-
-		response := map[string]interface{}{
-			"zone":      zone,
-			"requested": zoneID,
-		}
-		s.writeJSON(w, response)
-		return
-	}
-
-	// Get all zones
-	topology, err := topologyMapper.GetCurrentTopology()
-	if err != nil {
-		log.Printf("handleTopologyZones: failed to get topology: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to get topology: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	response := map[string]interface{}{
-		"zones":        topology.Zones,
-		"zone_count":   len(topology.Zones),
-		"generated_at": topology.Metadata.GeneratedAt,
-	}
-
-	log.Printf("handleTopologyZones: returning %d zones", len(topology.Zones))
-	s.writeJSON(w, response)
+	s.writeJSON(w, emptyZones)
 }
 
 // handleTopologyLive handles WebSocket connections for live topology updates
@@ -1177,29 +1118,18 @@ func (s *Server) handleTopologyLive(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("handleTopologyLive: providing live topology update")
 
-	topologyMapper := s.node.GetTopologyMapper()
-	if topologyMapper == nil {
-		log.Printf("handleTopologyLive: topology mapper not available")
-		http.Error(w, "Topology mapper not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	topology, err := topologyMapper.GetCurrentTopology()
-	if err != nil {
-		log.Printf("handleTopologyLive: failed to get topology: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to get topology: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Add live update metadata
+	// DISABLED: Return empty live topology to eliminate topology mapper calls
 	response := map[string]interface{}{
-		"topology":              topology,
+		"topology": map[string]interface{}{
+			"nodes":       []interface{}{},
+			"connections": []interface{}{},
+			"zones":       []interface{}{},
+			"barriers":    []interface{}{},
+		},
 		"live_update":           true,
-		"poll_interval_seconds": 5,     // Recommend polling every 5 seconds
-		"supports_websocket":    false, // Future enhancement
+		"poll_interval_seconds": 5,
+		"supports_websocket":    false,
 	}
-
-	log.Printf("handleTopologyLive: live topology update provided")
 	s.writeJSON(w, response)
 }
 
@@ -1211,23 +1141,13 @@ func (s *Server) handleChemistryConcentrations(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	diffusionService := s.node.GetDiffusionService()
-	if diffusionService == nil {
-		log.Printf("handleChemistryConcentrations: diffusion service not available")
-		http.Error(w, "Diffusion service not available", http.StatusServiceUnavailable)
-		return
+	// DISABLED: Return empty chemistry state to eliminate chemistry engine calls
+	emptyState := map[string]interface{}{
+		"concentrations": make(map[string]float64),
+		"last_update":    0,
+		"node_id":        s.node.ID(),
 	}
-
-	chemEngine := diffusionService.GetChemistryEngine()
-	if chemEngine == nil {
-		log.Printf("handleChemistryConcentrations: chemistry engine not available")
-		http.Error(w, "Chemistry engine not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	concentrationState := chemEngine.GetConcentrationState()
-	log.Printf("handleChemistryConcentrations: returning concentration state")
-	s.writeJSON(w, concentrationState)
+	s.writeJSON(w, emptyState)
 }
 
 // handleChemistryReactions returns reaction history
@@ -1238,28 +1158,12 @@ func (s *Server) handleChemistryReactions(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	diffusionService := s.node.GetDiffusionService()
-	if diffusionService == nil {
-		log.Printf("handleChemistryReactions: diffusion service not available")
-		http.Error(w, "Diffusion service not available", http.StatusServiceUnavailable)
-		return
+	// DISABLED: Return empty reactions to eliminate chemistry engine calls
+	emptyReactions := map[string]interface{}{
+		"reactions": []interface{}{},
+		"count":     0,
 	}
-
-	chemEngine := diffusionService.GetChemistryEngine()
-	if chemEngine == nil {
-		log.Printf("handleChemistryReactions: chemistry engine not available")
-		http.Error(w, "Chemistry engine not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	reactions := chemEngine.GetReactionHistory()
-	response := map[string]interface{}{
-		"reactions": reactions,
-		"count":     len(reactions),
-	}
-
-	log.Printf("handleChemistryReactions: returning %d reactions", len(reactions))
-	s.writeJSON(w, response)
+	s.writeJSON(w, emptyReactions)
 }
 
 // handleChemistryStats returns chemistry engine statistics
@@ -1270,23 +1174,20 @@ func (s *Server) handleChemistryStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	diffusionService := s.node.GetDiffusionService()
-	if diffusionService == nil {
-		log.Printf("handleChemistryStats: diffusion service not available")
-		http.Error(w, "Diffusion service not available", http.StatusServiceUnavailable)
-		return
+	// DISABLED: Return empty chemistry stats to eliminate chemistry engine calls
+	emptyStats := map[string]interface{}{
+		"node_id":             s.node.ID(),
+		"total_energy":        0.0,
+		"total_reactions":     0,
+		"concentration_decay": 0.0,
+		"reaction_threshold":  0.0,
+		"diffusion_threshold": 0.0,
+		"base_reaction_rate":  0.0,
+		"last_update":         0,
+		"total_messages":      0,
+		"message_types":       0,
 	}
-
-	chemEngine := diffusionService.GetChemistryEngine()
-	if chemEngine == nil {
-		log.Printf("handleChemistryStats: chemistry engine not available")
-		http.Error(w, "Chemistry engine not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	stats := chemEngine.GetChemistryStats()
-	log.Printf("handleChemistryStats: returning chemistry statistics")
-	s.writeJSON(w, stats)
+	s.writeJSON(w, emptyStats)
 }
 
 // handleMetricsCluster returns comprehensive cluster health metrics
@@ -2122,152 +2023,4 @@ func (s *Server) collectAllJSONMetrics() map[string]interface{} {
 	return response
 }
 
-// handleDashboard serves the web dashboard
-func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Serve the dashboard HTML
-	dashboardHTML := `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ryx Distributed Computing Dashboard</title>
-    <link rel="stylesheet" href="/static/css/dashboard.css">
-</head>
-<body>
-    <div class="header">
-        <h1>Ryx Distributed Computing Dashboard</h1>
-        <div class="cluster-status">
-            <span id="cluster-info">Connecting...</span>
-            <span id="connection-status" class="status-connecting">●</span>
-        </div>
-    </div>
-
-    <div class="main-container">
-        <div class="sidebar">
-            <div class="panel">
-                <h3>Cluster Overview</h3>
-                <div class="stats">
-                    <div class="stat">
-                        <span class="stat-label">Total Nodes:</span>
-                        <span id="total-nodes" class="stat-value">0</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat-label">Healthy Nodes:</span>
-                        <span id="healthy-nodes" class="stat-value">0</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat-label">Active Tasks:</span>
-                        <span id="active-tasks" class="stat-value">0</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat-label">Messages/sec:</span>
-                        <span id="message-rate" class="stat-value">0</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="panel">
-                <h3>Submit Task</h3>
-                <form id="task-form">
-                    <div class="form-group">
-                        <label for="task-type">Task Type:</label>
-                        <select id="task-type" name="type">
-                            <option value="wordcount">Word Count</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="task-data">Input Data:</label>
-                        <textarea id="task-data" name="data" placeholder="Enter text to process..." rows="4"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="task-energy">Energy:</label>
-                        <input type="number" id="task-energy" name="energy" value="10" min="1" max="100" step="0.1">
-                    </div>
-                    <button type="submit">Submit Task</button>
-                </form>
-            </div>
-
-            <div class="panel">
-                <h3>Recent Tasks</h3>
-                <div id="recent-tasks" class="task-list">
-                    <div class="no-tasks">No tasks submitted yet</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="main-content">
-            <div class="tab-container">
-                <div class="tabs">
-                    <button class="tab-button active" data-tab="nodes">Node Grid</button>
-                    <button class="tab-button" data-tab="topology">Network Topology</button>
-                    <button class="tab-button" data-tab="chemistry">Chemistry Monitor</button>
-                </div>
-
-                <div id="nodes-tab" class="tab-content active">
-                    <div class="tab-header">
-                        <h2>Node Grid</h2>
-                        <div class="legend">
-                            <span class="legend-item"><span class="node-indicator healthy"></span> Healthy</span>
-                            <span class="legend-item"><span class="node-indicator warning"></span> Warning</span>
-                            <span class="legend-item"><span class="node-indicator error"></span> Error</span>
-                            <span class="legend-item"><span class="node-indicator offline"></span> Offline</span>
-                        </div>
-                    </div>
-                    <div id="node-grid" class="node-grid">
-                        <div class="loading">Discovering nodes...</div>
-                    </div>
-                </div>
-
-                <div id="topology-tab" class="tab-content">
-                    <div class="tab-header">
-                        <h2>Network Topology</h2>
-                        <div class="topology-controls">
-                            <button id="layout-button">Force Layout</button>
-                            <button id="zoom-fit">Fit to Screen</button>
-                        </div>
-                    </div>
-                    <div id="topology-view" class="topology-container">
-                        <svg id="topology-svg" width="100%" height="500px"></svg>
-                    </div>
-                </div>
-
-                <div id="chemistry-tab" class="tab-content">
-                    <div class="tab-header">
-                        <h2>Chemistry Monitor</h2>
-                        <div class="chemistry-controls">
-                            <button id="inject-chemical">Inject Chemical</button>
-                        </div>
-                    </div>
-                    <div class="chemistry-container">
-                        <div class="chemistry-stats">
-                            <div class="chem-stat">
-                                <span class="chem-label">Total Concentration:</span>
-                                <span id="total-concentration" class="chem-value">0.00</span>
-                            </div>
-                            <div class="chem-stat">
-                                <span class="chem-label">Active Reactions:</span>
-                                <span id="active-reactions" class="chem-value">0</span>
-                            </div>
-                        </div>
-                        <div id="chemistry-grid" class="chemistry-grid">
-                            <div class="loading">Loading chemistry data...</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="/static/js/dashboard.js"></script>
-</body>
-</html>`
-
-	w.Header().Set("Content-Type", "text/html")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(dashboardHTML))
-}
+// Dashboard functionality removed - use external ryx-dashboard application

@@ -300,7 +300,12 @@ func (s *Service) forwardToNeighbors(msg *types.InfoMessage) {
 		return
 	}
 
+	// DEADLOCK FIX: Get neighbors outside any critical section to prevent discovery-diffusion deadlock
 	neighbors := s.disc.GetNeighbors()
+	if neighbors == nil {
+		log.Printf("forwardToNeighbors: no neighbors available")
+		return
+	}
 	log.Printf("forwardToNeighbors: found %d neighbors", len(neighbors))
 
 	for _, neighbor := range neighbors {

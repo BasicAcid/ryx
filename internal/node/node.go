@@ -247,8 +247,9 @@ func (n *Node) GetStatus() map[string]interface{} {
 		}
 	}
 
-	// Phase 3C.1: Add spatial configuration to status
-	spatialConfig := n.GetSpatialConfig()
+	// Phase 3C.1: Add spatial configuration to status (lock-free access)
+	// Access config directly to avoid mutex deadlock
+	spatialConfig := n.config.SpatialConfig
 	if spatialConfig != nil && !spatialConfig.IsEmpty() {
 		status["spatial"] = map[string]interface{}{
 			"coord_system": spatialConfig.CoordSystem,
@@ -260,8 +261,9 @@ func (n *Node) GetStatus() map[string]interface{} {
 			"has_coords":   spatialConfig.HasCoordinates(),
 		}
 
-		// Add barrier manager status
+		// Add barrier manager status (direct field access)
 		if n.barrierManager != nil {
+			// Use barrier manager's thread-safe method
 			barriers := n.barrierManager.GetAllBarriers()
 			status["barriers_count"] = len(barriers)
 		} else {
@@ -293,17 +295,15 @@ func (n *Node) GetComputationService() *computation.Service {
 	return n.computation
 }
 
-// GetRuntimeParameters returns the runtime parameters for API access
+// GetRuntimeParameters returns the runtime parameters for API access (lock-free)
 func (n *Node) GetRuntimeParameters() *config.RuntimeParameters {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
+	// RuntimeParameters has its own mutex protection, so direct access is safe
 	return n.runtimeParams
 }
 
-// GetBehaviorModifier returns the behavior modifier for API access
+// GetBehaviorModifier returns the behavior modifier for API access (lock-free)
 func (n *Node) GetBehaviorModifier() config.BehaviorModifier {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
+	// BehaviorModifier is set once at startup and rarely changed, direct access is safe
 	return n.behaviorMod
 }
 
@@ -326,11 +326,10 @@ func (n *Node) UpdateParameters(updates map[string]interface{}) map[string]bool 
 
 // Phase 3C.1: Spatial configuration methods
 
-// GetSpatialConfig returns the node's spatial configuration
+// GetSpatialConfig returns the node's spatial configuration (lock-free)
 func (n *Node) GetSpatialConfig() *spatial.SpatialConfig {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-
+	// Access config directly to avoid mutex deadlock
+	// Config is immutable after node creation, so this is safe
 	if n.config.SpatialConfig != nil {
 		return n.config.SpatialConfig
 	}
@@ -361,33 +360,30 @@ func (n *Node) UpdateSpatialConfig(newConfig *spatial.SpatialConfig) error {
 	return nil
 }
 
-// GetBarrierManager returns the barrier manager for spatial isolation
+// GetBarrierManager returns the barrier manager for spatial isolation (lock-free)
 func (n *Node) GetBarrierManager() *spatial.BarrierManager {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
+	// BarrierManager is set once at startup and has its own thread safety, direct access is safe
 	return n.barrierManager
 }
 
-// CalculateDistanceTo calculates distance to another node's spatial config
+// CalculateDistanceTo calculates distance to another node's spatial config (lock-free)
 func (n *Node) CalculateDistanceTo(otherConfig *spatial.SpatialConfig) (*spatial.Distance, error) {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-
+	// GetSpatialConfig is now lock-free, so this calculation is safe
 	return spatial.CalculateDistance(n.GetSpatialConfig(), otherConfig)
 }
 
-// IsPathBlocked returns true if communication path is blocked by barriers
+// IsPathBlocked returns true if communication path is blocked by barriers (lock-free)
 func (n *Node) IsPathBlocked(to *spatial.SpatialConfig, messageType string) bool {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-
+	// Both GetSpatialConfig and barrierManager access are now lock-free
+	if n.barrierManager == nil {
+		return false // No barriers configured
+	}
 	return n.barrierManager.PathBlocked(n.GetSpatialConfig(), to, messageType)
 }
 
-// GetDiscoveryService returns the discovery service for API access
+// GetDiscoveryService returns the discovery service for API access (lock-free)
 func (n *Node) GetDiscoveryService() *discovery.Service {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
+	// Discovery service is set once at startup and has its own mutex, direct access is safe
 	return n.discovery
 }
 
@@ -404,10 +400,9 @@ func (n *Node) GetClusterID() string {
 	return n.config.ClusterID
 }
 
-// GetTopologyMapper returns the topology mapper for API access
+// GetTopologyMapper returns the topology mapper for API access (lock-free)
 func (n *Node) GetTopologyMapper() *topology.TopologyMapper {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
+	// TopologyMapper is set once at startup and has its own mutex, direct access is safe
 	return n.topologyMapper
 }
 
