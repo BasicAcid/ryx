@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -20,14 +21,16 @@ type DashboardServer struct {
 }
 
 type NodeInfo struct {
-	ID         string  `json:"id"`
-	Port       int     `json:"port"`
-	HTTPPort   int     `json:"http_port"`
-	Status     string  `json:"status"`
-	Neighbors  int     `json:"neighbor_count"`
-	Tasks      int     `json:"active_tasks"`
-	ChemEnergy float64 `json:"chemistry_energy,omitempty"`
-	Reachable  bool    `json:"reachable"`
+	ID             string  `json:"id"`
+	Port           int     `json:"port"`
+	HTTPPort       int     `json:"http_port"`
+	Status         string  `json:"status"`
+	Neighbors      int     `json:"neighbor_count"`
+	Tasks          int     `json:"active_tasks"`
+	CompletedTasks int     `json:"completed_tasks"`
+	ChemEnergy     float64 `json:"chemistry_energy,omitempty"`
+	Reachable      bool    `json:"reachable"`
+	LastUpdate     string  `json:"last_update"`
 }
 
 type ClusterStatus struct {
@@ -84,9 +87,23 @@ func (ds *DashboardServer) discoverCluster() ClusterStatus {
 
 		node.Reachable = true
 		node.ID = getString(status, "node_id")
-		node.Status = getString(status, "status")
+		node.Status = "healthy" // Default to healthy if reachable
 		node.Neighbors = getInt(status, "neighbor_count")
-		node.Tasks = getInt(status, "active_tasks")
+
+		// Get computation statistics
+		compResp, err := client.Get(fmt.Sprintf("http://localhost:%d/compute", httpPort))
+		if err == nil {
+			defer compResp.Body.Close()
+			var compData map[string]interface{}
+			if json.NewDecoder(compResp.Body).Decode(&compData) == nil {
+				if stats, ok := compData["stats"].(map[string]interface{}); ok {
+					node.Tasks = getInt(stats, "active_tasks")
+					node.CompletedTasks = getInt(stats, "completed_tasks")
+				}
+			}
+		}
+
+		node.LastUpdate = time.Now().Format("15:04:05")
 
 		// Try to get chemistry energy
 		chemResp, err := client.Get(fmt.Sprintf("http://localhost:%d/chemistry/stats", httpPort))
@@ -195,9 +212,70 @@ func (ds *DashboardServer) handleStatic(w http.ResponseWriter, r *http.Request) 
 	http.StripPrefix("/static/", http.FileServer(http.Dir("cmd/ryx-dashboard/static/"))).ServeHTTP(w, r)
 }
 
+func (ds *DashboardServer) handleClusterTaskSubmit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse task submission request
+	var taskRequest map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&taskRequest); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Find first healthy node to submit task to
+	status := ds.discoverCluster()
+	var targetNode *NodeInfo
+	for _, node := range status.Nodes {
+		if node.Reachable {
+			targetNode = &node
+			break
+		}
+	}
+
+	if targetNode == nil {
+		http.Error(w, "No healthy nodes available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Submit task to target node
+	client := &http.Client{Timeout: 5 * time.Second}
+	taskJSON, _ := json.Marshal(taskRequest)
+
+	resp, err := client.Post(
+		fmt.Sprintf("http://localhost:%d/compute", targetNode.HTTPPort),
+		"application/json",
+		strings.NewReader(string(taskJSON)),
+	)
+
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to submit task: %v", err), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Return the response from the node
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			w.Write(buf[:n])
+		}
+		if err != nil {
+			break
+		}
+	}
+}
+
 func (ds *DashboardServer) Start() error {
 	http.HandleFunc("/", ds.handleDashboard)
 	http.HandleFunc("/cluster/status", ds.handleClusterStatus)
+	http.HandleFunc("/cluster/submit-task", ds.handleClusterTaskSubmit)
 	http.HandleFunc("/node-proxy", ds.handleNodeProxy)
 	http.HandleFunc("/static/", ds.handleStatic)
 

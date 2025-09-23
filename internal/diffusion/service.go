@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"log"
 	"sync"
 	"time"
@@ -24,6 +25,10 @@ type Service struct {
 	disc        types.DiscoveryService
 	computation types.ComputationService
 
+	// Result storage for cluster-wide result discovery
+	results   map[string]*types.ComputationResult
+	resultsMu sync.RWMutex
+
 	// Configuration and behavior modification
 	runtimeParams *config.RuntimeParameters
 	behaviorMod   config.BehaviorModifier
@@ -39,6 +44,7 @@ func New(nodeID string) *Service {
 	return &Service{
 		nodeID:     nodeID,
 		storage:    make(map[string]*types.InfoMessage),
+		results:    make(map[string]*types.ComputationResult),
 		chemEngine: chemistry.NewEngine(nodeID),
 	}
 }
@@ -49,6 +55,7 @@ func NewWithConfig(nodeID string, params *config.RuntimeParameters, behaviorMod 
 	return &Service{
 		nodeID:        nodeID,
 		storage:       make(map[string]*types.InfoMessage),
+		results:       make(map[string]*types.ComputationResult),
 		runtimeParams: params,
 		behaviorMod:   behaviorMod,
 		chemEngine:    chemistry.NewEngine(nodeID),
@@ -121,6 +128,12 @@ func (s *Service) InjectInfo(infoType string, content []byte, energy float64, tt
 	// Process chemistry reactions (Phase 4A)
 	s.processChemistryForNewMessage(info)
 
+	// Phase 2C: Route computational tasks to computation service (for local injections)
+	if info.Type == "task" && s.computation != nil {
+		log.Printf("InjectInfo: routing task message id=%s to computation service", info.ID)
+		go s.computation.ExecuteTask(info)
+	}
+
 	// Forward to neighbors if energy > 0 (Phase 2B inter-node diffusion)
 	if info.Energy > 0 {
 		log.Printf("InjectInfo: forwarding message id=%s with energy=%d", id, info.Energy)
@@ -157,6 +170,12 @@ func (s *Service) HandleInfoMessage(msg *types.InfoMessage, fromNodeID string) e
 	if msg.Type == "task" && s.computation != nil {
 		log.Printf("HandleInfoMessage: routing task message id=%s to computation service", msg.ID)
 		go s.computation.ExecuteTask(msg)
+	}
+
+	// Phase A: Store computational results for cluster-wide access
+	if msg.Type == "result" {
+		log.Printf("HandleInfoMessage: storing result message id=%s from node=%s", msg.ID, fromNodeID)
+		s.storeResultMessage(msg)
 	}
 
 	// Forward to neighbors if energy > 0
@@ -246,15 +265,13 @@ func (s *Service) cleanupLoop() {
 	}
 }
 
-// cleanup removes messages that have exceeded their TTL
+// cleanup removes messages that have exceeded their TTL and old computation results
 func (s *Service) cleanup() {
 	now := time.Now().Unix()
+
+	// Clean up InfoMessages
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Placeholder for system memory usage - in real implementation would get actual metrics
 	systemMemoryUsage := 0.5 // TODO: Get real memory usage metrics
-
 	removed := 0
 	for id, info := range s.storage {
 		shouldCleanup := false
@@ -272,9 +289,27 @@ func (s *Service) cleanup() {
 			removed++
 		}
 	}
+	s.mu.Unlock()
 
 	if removed > 0 {
 		log.Printf("Cleaned up %d expired messages", removed)
+	}
+
+	// Clean up computation results (match computation service 10-minute TTL)
+	s.resultsMu.Lock()
+	resultCutoff := time.Now().Add(-10 * time.Minute).Unix()
+	removedResults := 0
+
+	for taskID, result := range s.results {
+		if result.Timestamp < resultCutoff {
+			delete(s.results, taskID)
+			removedResults++
+		}
+	}
+	s.resultsMu.Unlock()
+
+	if removedResults > 0 {
+		log.Printf("Cleaned up %d old cluster results", removedResults)
 	}
 }
 
@@ -447,4 +482,50 @@ func (s *Service) processChemistryForNewMessage(newMsg *types.InfoMessage) {
 // GetChemistryEngine returns the chemistry engine for API access
 func (s *Service) GetChemistryEngine() *chemistry.Engine {
 	return s.chemEngine
+}
+
+// storeResultMessage stores a computation result from a diffusion message for cluster-wide access
+func (s *Service) storeResultMessage(msg *types.InfoMessage) {
+	// Deserialize result from message content
+	var result types.ComputationResult
+	if err := json.Unmarshal(msg.Content, &result); err != nil {
+		log.Printf("Failed to parse result message %s: %v", msg.ID, err)
+		return
+	}
+
+	// Store in results map for cluster access
+	s.resultsMu.Lock()
+	s.results[result.TaskID] = &result
+	s.resultsMu.Unlock()
+
+	log.Printf("Stored result for task %s from node %s (execution time: %dms)",
+		result.TaskID, result.ExecutedBy, result.ExecutionTime)
+}
+
+// GetStoredResult retrieves a computation result that was received via diffusion
+func (s *Service) GetStoredResult(taskID string) (*types.ComputationResult, bool) {
+	s.resultsMu.RLock()
+	defer s.resultsMu.RUnlock()
+
+	if result, exists := s.results[taskID]; exists {
+		// Return a copy to avoid concurrent access issues
+		resultCopy := *result
+		return &resultCopy, true
+	}
+
+	return nil, false
+}
+
+// GetAllStoredResults returns all computation results received via diffusion
+func (s *Service) GetAllStoredResults() map[string]*types.ComputationResult {
+	s.resultsMu.RLock()
+	defer s.resultsMu.RUnlock()
+
+	results := make(map[string]*types.ComputationResult)
+	for taskID, result := range s.results {
+		resultCopy := *result
+		results[taskID] = &resultCopy
+	}
+
+	return results
 }

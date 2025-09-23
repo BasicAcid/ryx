@@ -204,6 +204,7 @@ class RyxDashboard {
     updateUI() {
         this.updateClusterStats();
         this.updateNodeGrid();
+        this.enhanceNodeCards();
         
         // Update active tab content
         const activeTab = document.querySelector('.tab-button.active');
@@ -273,13 +274,16 @@ class RyxDashboard {
     createNodeCard(node) {
         const card = document.createElement('div');
         card.className = 'node-card';
+        card.setAttribute('data-node-id', node.id);
         
         const statusClass = node.status === 'healthy' ? 'healthy' : 
                           node.status === 'warning' ? 'warning' : 
                           node.status === 'error' ? 'error' : 'offline';
 
         const coordinates = this.getNodeCoordinates(node.data);
-        const zone = node.data.spatial?.zone || 'unknown';
+        const zone = node.data.spatial?.zone || node.data.zone || 'unknown';
+        const activeTasks = node.data.tasks || 0;
+        const completedTasks = node.data.completed_tasks || 0;
         
         card.innerHTML = `
             <div class="node-card-header">
@@ -288,10 +292,10 @@ class RyxDashboard {
             </div>
             <div class="node-info">
                 <div><strong>Zone:</strong> ${zone}</div>
-                <div><strong>Coordinates:</strong> <span class="node-coord">${coordinates}</span></div>
                 <div><strong>Neighbors:</strong> ${node.data.neighbor_count || 0}</div>
-                <div><strong>Messages:</strong> ${node.data.message_count || 0}</div>
-                <div><strong>Uptime:</strong> ${this.formatUptime(node.data.uptime || 0)}</div>
+                <div><strong>Active Tasks:</strong> <span class="active-tasks">${activeTasks}</span></div>
+                <div><strong>Completed:</strong> <span class="completed-tasks">${completedTasks}</span></div>
+                <div><strong>Status:</strong> ${node.data.last_update || 'unknown'}</div>
             </div>
         `;
 
@@ -346,10 +350,12 @@ class RyxDashboard {
         }
 
         try {
-            const result = await this.postToNode(healthyNode.httpPort, '/compute', taskData);
-            if (result) {
+            // Use cluster-wide task submission
+            const result = await this.submitTaskToCluster(taskData);
+            if (result && result.success) {
                 console.log('Task submitted successfully:', result);
                 this.addTaskToRecentList(taskData, result);
+                this.animateTaskSubmission(result.task.id);
                 form.reset();
                 document.getElementById('task-energy').value = '10'; // Reset to default
             } else {
@@ -570,6 +576,128 @@ Tasks: ${node.data.tasks || 0}
 Reachable: ${node.data.reachable ? 'Yes' : 'No'}
         `;
         alert(details);
+    }
+
+    async submitTaskToCluster(taskData) {
+        try {
+            const response = await fetch(`${this.dashboardBaseUrl}/cluster/submit-task`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(taskData)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            return await response.json();
+        } catch (error) {
+            console.error('Cluster task submission failed:', error);
+            throw error;
+        }
+    }
+
+    animateTaskSubmission(taskId) {
+        // Add visual indicator to show task was submitted
+        const indicator = document.createElement('div');
+        indicator.className = 'task-submission-indicator';
+        indicator.textContent = `Task ${taskId.substring(0,8)} submitted`;
+        indicator.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            z-index: 1000;
+            opacity: 1;
+            transition: all 0.5s ease;
+            font-weight: bold;
+        `;
+        
+        document.body.appendChild(indicator);
+        
+        // Animate and remove
+        setTimeout(() => {
+            indicator.style.opacity = '0';
+            indicator.style.transform = 'translateY(-20px)';
+        }, 2000);
+        
+        setTimeout(() => {
+            document.body.removeChild(indicator);
+        }, 2500);
+    }
+
+    addTaskFlowIndicator(nodeId, taskId) {
+        // Add flowing indicator on specific node
+        const nodeCard = document.querySelector(`[data-node-id="${nodeId}"]`);
+        if (!nodeCard) return;
+        
+        const flowIndicator = document.createElement('div');
+        flowIndicator.className = 'task-flow-indicator';
+        flowIndicator.textContent = '⚡';
+        flowIndicator.style.cssText = `
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: #FF9800;
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            animation: pulse 1s infinite;
+        `;
+        
+        nodeCard.style.position = 'relative';
+        nodeCard.appendChild(flowIndicator);
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            if (flowIndicator.parentNode) {
+                flowIndicator.parentNode.removeChild(flowIndicator);
+            }
+        }, 3000);
+    }
+
+    enhanceNodeCards() {
+        // Add task completion animations to node cards
+        this.nodes.forEach((node, httpPort) => {
+            const nodeCard = document.querySelector(`[data-node-id="${node.id}"]`);
+            if (nodeCard) {
+                // Add CSS classes for animation
+                if (node.data.tasks > 0) {
+                    nodeCard.classList.add('node-active');
+                } else {
+                    nodeCard.classList.remove('node-active');
+                }
+                
+                // Update completion count with animation
+                const completedEl = nodeCard.querySelector('.completed-tasks');
+                if (completedEl) {
+                    const currentCount = parseInt(completedEl.textContent) || 0;
+                    const newCount = node.data.completed_tasks || 0;
+                    
+                    if (newCount > currentCount) {
+                        // Animate task completion
+                        completedEl.style.transform = 'scale(1.2)';
+                        completedEl.style.color = '#4CAF50';
+                        setTimeout(() => {
+                            completedEl.style.transform = 'scale(1)';
+                            completedEl.style.color = '';
+                        }, 300);
+                    }
+                    
+                    completedEl.textContent = newCount;
+                }
+            }
+        });
     }
 
     destroy() {

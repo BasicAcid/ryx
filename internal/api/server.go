@@ -106,6 +106,10 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/compute", s.handleCompute)
 	mux.HandleFunc("/compute/", s.handleComputeByID)
 
+	// Result discovery endpoints (Phase A)
+	mux.HandleFunc("/results/", s.handleResultSearch)
+	mux.HandleFunc("/results", s.handleAllResults)
+
 	// Configuration endpoints (Phase 3B - Self-modification)
 	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/config/", s.handleConfigParameter)
@@ -399,23 +403,18 @@ func (s *Server) handleInfoByID(w http.ResponseWriter, r *http.Request) {
 
 // handleCompute processes computational task injection and queries
 func (s *Server) handleCompute(w http.ResponseWriter, r *http.Request) {
-	// DISABLED: Return empty response to eliminate computation service calls
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("PANIC in handleCompute: %v", recovered)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+	}()
+
 	switch r.Method {
 	case http.MethodPost:
-		// Return success without actually processing the task
-		response := map[string]interface{}{
-			"message": "Computational task disabled for debugging",
-			"success": false,
-		}
-		s.writeJSON(w, response)
+		s.handleComputeInject(w, r)
 	case http.MethodGet:
-		// Return empty task list
-		response := map[string]interface{}{
-			"active":    []interface{}{},
-			"completed": []interface{}{},
-			"node_id":   s.node.ID(),
-		}
-		s.writeJSON(w, response)
+		s.handleComputeList(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -539,8 +538,151 @@ func (s *Server) handleComputeByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// DISABLED: Return not found for all computation task queries
-	http.Error(w, "Computation service disabled for debugging", http.StatusServiceUnavailable)
+	// Extract ID from URL path
+	path := r.URL.Path
+	if !strings.HasPrefix(path, "/compute/") {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
+	id := strings.TrimPrefix(path, "/compute/")
+	if id == "" {
+		http.Error(w, "Missing computation ID", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("handleComputeByID: getting computation id=%s", id)
+
+	computation := s.node.GetComputationService()
+	if computation == nil {
+		http.Error(w, "Computation service not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	result, exists := computation.GetComputationResult(id)
+	if !exists {
+		log.Printf("handleComputeByID: computation id=%s not found", id)
+		http.Error(w, "Computation not found", http.StatusNotFound)
+		return
+	}
+
+	response := map[string]interface{}{
+		"id":     id,
+		"result": result,
+	}
+
+	log.Printf("handleComputeByID: found computation id=%s", id)
+	s.writeJSON(w, response)
+}
+
+// handleResultSearch searches for computation results in both local and cluster storage
+func (s *Server) handleResultSearch(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("PANIC in handleResultSearch: %v", recovered)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+	}()
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract task ID from URL path
+	path := r.URL.Path
+	if !strings.HasPrefix(path, "/results/") {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
+	taskID := strings.TrimPrefix(path, "/results/")
+	if taskID == "" {
+		http.Error(w, "Missing task ID", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("handleResultSearch: searching for result id=%s", taskID)
+
+	// First check computation service (local execution)
+	computation := s.node.GetComputationService()
+	if computation != nil {
+		if result, exists := computation.GetComputationResult(taskID); exists {
+			response := map[string]interface{}{
+				"id":     taskID,
+				"result": result,
+				"source": "local_execution",
+			}
+			log.Printf("handleResultSearch: found result id=%s in local computation service", taskID)
+			s.writeJSON(w, response)
+			return
+		}
+	}
+
+	// Then check diffusion service (received from other nodes)
+	diffusion := s.node.GetDiffusionService()
+	if diffusion != nil {
+		if result, exists := diffusion.GetStoredResult(taskID); exists {
+			response := map[string]interface{}{
+				"id":     taskID,
+				"result": result,
+				"source": "cluster_propagation",
+			}
+			log.Printf("handleResultSearch: found result id=%s in diffusion service", taskID)
+			s.writeJSON(w, response)
+			return
+		}
+	}
+
+	log.Printf("handleResultSearch: result id=%s not found", taskID)
+	http.Error(w, "Result not found", http.StatusNotFound)
+}
+
+// handleAllResults returns all available computation results from both local and cluster sources
+func (s *Server) handleAllResults(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("PANIC in handleAllResults: %v", recovered)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+	}()
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	log.Printf("handleAllResults: collecting all available results")
+
+	response := map[string]interface{}{
+		"node_id":         s.node.ID(),
+		"local_results":   make(map[string]*types.ComputationResult),
+		"cluster_results": make(map[string]*types.ComputationResult),
+	}
+
+	// Get local execution results
+	computation := s.node.GetComputationService()
+	if computation != nil {
+		activeResults := computation.GetActiveComputations()
+		for taskID, result := range activeResults {
+			response["local_results"].(map[string]*types.ComputationResult)[taskID] = result
+		}
+	}
+
+	// Get cluster-propagated results
+	diffusion := s.node.GetDiffusionService()
+	if diffusion != nil {
+		clusterResults := diffusion.GetAllStoredResults()
+		for taskID, result := range clusterResults {
+			response["cluster_results"].(map[string]*types.ComputationResult)[taskID] = result
+		}
+	}
+
+	localCount := len(response["local_results"].(map[string]*types.ComputationResult))
+	clusterCount := len(response["cluster_results"].(map[string]*types.ComputationResult))
+
+	log.Printf("handleAllResults: returning %d local + %d cluster results", localCount, clusterCount)
+	s.writeJSON(w, response)
 }
 
 // writeJSON writes a JSON response
