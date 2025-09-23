@@ -109,10 +109,12 @@
 - Test both success and failure paths
 
 ### UI/UX Guidelines
-- **Minimize emoji usage**: Avoid emojis in code output, logs, and documentation
+- **Minimize emoji usage**: Avoid emojis in code output, logs, and documentation unless specifically requested
+- **Use emojis sparingly**: Only use emojis when they add genuine value and the user explicitly requests them
 - Use clear, descriptive text instead of visual symbols
 - Prefer professional terminal output for production systems
 - Use consistent formatting for status messages and progress indicators
+- **Status indicators**: Use text-based markers like [DONE], [TODO], [TARGET], [VALIDATED] instead of emoji symbols
 
 ### Cellular Automata Guidelines
 

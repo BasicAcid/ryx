@@ -35,67 +35,74 @@
 go build -o ryx-node ./cmd/ryx-node
 go build -o ryx-cluster ./cmd/ryx-cluster
 
-# Start spatial cluster
-./ryx-cluster -cmd start -profile huge  # 50 nodes with spatial awareness
+# Start small spatial cluster for testing
+./ryx-cluster -cmd start -profile small  # 5 nodes - better for incremental testing
 
-# Check spatial status
+# Validate spatial foundation
 curl -s localhost:8010/spatial/neighbors | jq '.zone_analysis'
 curl -s localhost:8010/spatial/position | jq '.'
+curl -s localhost:8010/status | jq '.'
 
 # Stop cluster
 ./ryx-cluster -cmd stop
 ```
 
-## Development Phases
+## Development Phases (Incremental & Validated)
 
-### Phase 1: Foundation Assessment (Current)
-**Status**: Analyzing existing spatial infrastructure for CA conversion
+### Phase 1: Foundation Assessment & Cleanup (Current)
+**Goal**: Clean foundation and validate existing spatial infrastructure
 
-**Completed Infrastructure**:
-- Spatial coordinate systems and distance calculations
-- Zone-aware neighbor discovery and topology
-- Barrier-based physical fault isolation
-- Runtime parameter system for adaptive behavior
+**Steps**:
+1. [DONE] Remove obsolete phase documentation files
+2. [TODO] Assess disabled code vs. working functionality 
+3. [TODO] Validate spatial foundation (coordinates, discovery, barriers)
+4. [TODO] Build system verification and basic cluster testing
 
-**Chemistry Engine**: Temporarily disabled during debugging - will be converted to CA update rules
+**Validation**: Ensure spatial node discovery and clustering works properly before adding CA complexity
 
-### Phase 2: Cellular Automata Core
-**Goal**: Replace message diffusion with cellular automata computation
+### Phase 2: Minimal CA Implementation
+**Goal**: Add simplest possible CA grid without breaking existing functionality
 
-**CA Grid Implementation**:
-- Convert nodes from message processors to cellular grids
-- Implement 2D/3D cell arrays within each node
-- Local CA update rules based on neighbor cell states
-- Cell state propagation between neighboring node grids
+**Steps**:
+1. Add basic CA grid data structure (2D integer array per node)
+2. Implement Conway's Game of Life or similar well-known CA rules
+3. Single-node CA validation (local grid updates only)
+4. Add `/ca/grid` and `/ca/stats` monitoring endpoints
 
-**CA Update Rules**:
-- Convert chemistry reaction rules to CA transition functions
-- Local neighborhood-based state updates
-- Energy-based pattern stability and decay
-- Emergent computation through CA evolution
+**Validation**: CA grids update locally, existing spatial discovery remains functional
 
-**Pattern Propagation**:
-- Replace InfoMessage diffusion with CA state synchronization
-- Spatial barriers become CA boundary conditions
-- Zone-aware CA pattern exchange between nodes
+### Phase 3: CA Grid Connectivity
+**Goal**: Connect CA grids between spatially adjacent nodes
 
-### Phase 3: Emergent Computation
-**Goal**: Achieve computation through CA pattern evolution
+**Steps**:
+1. Boundary state exchange (share edge cells between neighboring grids)
+2. Use existing distance calculations for CA connectivity determination
+3. Multi-node CA pattern propagation across connected grids
+4. Integrate barriers as CA boundary conditions
 
-**Pattern Seeding**:
-- Initial CA configurations representing computational problems
-- Pattern injection through boundary conditions
-- Self-organizing computational structures
+**Validation**: CA patterns propagate between nodes while respecting spatial barriers
 
-**Result Detection**:
-- Recognition of CA patterns representing completed computations
-- Extraction of results from converged CA states
-- Distributed pattern matching across spatial zones
+### Phase 4: CA Rule Evolution
+**Goal**: Replace message-based systems with CA computation
 
-**Validation**:
-- Simple computational problems (counters, logic gates)
-- Comparison with traditional computing approaches
-- Fault tolerance through pattern redundancy
+**Steps**:
+1. Convert chemistry reaction rules to CA transition functions
+2. Remove/disable message diffusion system
+3. Implement CA-based energy and pattern stability concepts
+4. Remove external computation injection APIs
+
+**Validation**: System operates purely through CA evolution without external control
+
+### Phase 5: Emergent Computation
+**Goal**: Achieve actual computation through CA pattern evolution
+
+**Steps**:
+1. Design CA configurations representing simple computational problems
+2. Implement pattern recognition for computational results
+3. Test basic computations (counters, logic gates, simple arithmetic)
+4. Validate fault tolerance through pattern redundancy
+
+**Validation**: CA patterns successfully perform and complete computational tasks
 
 ## Conversion Strategy
 
@@ -141,31 +148,43 @@ CA Grid per Node
 └── Pattern Detection - Recognize computational results
 ```
 
-## Success Criteria (CA Computing)
+## Success Criteria (Incremental Validation)
 
-**Cellular Automata Foundation**:
-- **CA grids functional**: Each node runs local cellular automata successfully
-- **Pattern propagation**: CA states synchronize between neighboring nodes
-- **Spatial boundaries**: Barriers properly isolate CA regions
-- **Rule configurability**: CA update rules adjustable via runtime parameters
+**Phase 1 (Foundation)**:
+- [VALIDATED] Spatial node discovery works across coordinate systems
+- [VALIDATED] Zone-aware neighbor selection (70/30 distribution)
+- [VALIDATED] Barrier system properly isolates spatial regions
+- [VALIDATED] Build system and cluster management functional
 
-**Emergent Computation**:
-- **Simple computations**: Basic counting, logic operations emerge from CA rules
-- **Pattern stability**: Computational results persist in CA configurations
-- **Distributed processing**: Computation spans multiple connected CA grids
-- **Result detection**: System recognizes when CA patterns represent answers
+**Phase 2 (Basic CA)**:
+- [TARGET] CA grids update locally using standard rules (Conway's Game of Life)
+- [TARGET] `/ca/grid` and `/ca/stats` endpoints provide grid state monitoring
+- [TARGET] Single-node CA operates without affecting spatial discovery
+- [TARGET] System remains stable with CA grids active
 
-**Robust Operation**:
-- **Fault tolerance**: Computation continues when nodes fail (pattern redundancy)
-- **Self-organization**: CA patterns self-repair and adapt to topology changes
-- **No external control**: Computation proceeds without API intervention
-- **Long-term stability**: CA evolution remains bounded and purposeful
+**Phase 3 (CA Connectivity)**:
+- [TARGET] CA boundary states synchronize between neighboring node grids
+- [TARGET] Spatial distance determines CA coupling strength
+- [TARGET] Patterns propagate across multiple connected CA grids
+- [TARGET] Barriers act as CA boundary conditions (isolation)
+
+**Phase 4 (CA Computing)**:
+- [TARGET] Message diffusion system fully replaced by CA pattern propagation
+- [TARGET] CA rules derived from chemistry reaction concepts
+- [TARGET] System operates without external computation injection
+- [TARGET] CA patterns show emergent stability and evolution
+
+**Phase 5 (Emergent Computation)**:
+- [TARGET] Simple computational problems solved through CA evolution
+- [TARGET] Pattern recognition detects completed computations
+- [TARGET] Fault tolerance through redundant CA patterns
+- [TARGET] Long-term CA stability with bounded, purposeful evolution
 
 ## Mission: Robust Computing Through Cellular Automata
 
 Implement Dave Ackley's vision of robust computation where computing emerges from local cellular automata rules rather than traditional programming. Build systems that compute through pattern evolution in spatial cellular grids.
 
-**Immediate Goal**: Convert existing spatial infrastructure into true cellular automata computing substrate.
+**Immediate Goal**: Phase 1 foundation assessment - validate spatial infrastructure and establish clean development foundation before adding CA complexity.
 
 **Target Applications**:
 - Research into emergent computation and self-organizing systems
