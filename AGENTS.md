@@ -1,62 +1,52 @@
-# Agent Guidelines for Ryx Distributed Computing System
+# Agent Guidelines for Ryx Cellular Automata Computing System
 
 ## Current System Status
 
-**Ryx is now a mission-critical spatial-physical distributed computing system with chemistry-based computing** and the following operational capabilities:
+**Ryx is transitioning from distributed computing to cellular automata computing** following Dave Ackley's robust computing vision. The system has excellent spatial substrate infrastructure that serves as the perfect foundation for CA computation.
 
-### Core Capabilities (Production Ready)
-- **Spatial-aware distributed computing**: Multi-modal coordinate systems (GPS, relative, logical, none)
-- **Chemistry-based computing**: Continuous energy model with chemical reactions and concentration tracking
-- **Hybrid neighbor selection**: 60% network performance + 40% spatial factors  
-- **Zone-aware topology**: 70% same-zone, 30% cross-zone neighbors for optimal redundancy
-- **Physical fault isolation**: Barrier-aware routing with compartment/zone isolation
-- **Autonomous intelligence**: Runtime behavior adaptation based on network conditions and spatial factors
-- **Large-scale operation**: 50+ node clusters with spatial awareness and race-condition-free operations
-- **Mission-critical APIs**: Complete spatial neighbor analysis, distance calculation, barrier management, and chemistry monitoring
-- **Chemistry engine**: 800+ lines of chemical reaction processing with real-time concentration tracking
-- **Continuous energy**: Float64 energy model with priority-based decay and chemical properties
+### Foundation Infrastructure (Ready for CA)
+- **Spatial substrate**: Multi-modal coordinate systems (GPS, relative, logical, none)
+- **Zone-aware topology**: Neighbor discovery with spatial awareness
+- **Physical fault isolation**: Barrier system for CA boundary conditions
+- **Runtime parameters**: Configurable system behavior for CA rule adaptation
+- **Large-scale clusters**: 50+ node spatial topology for CA grid networks
 
-### Deployment Scenarios
-- **🚀 Spaceship core systems**: Compartment isolation (bridge/engine bay) with bulkhead barriers
-- **🏙️ Smart city infrastructure**: GPS-based geographic optimization with fault isolation  
-- **🚗 Vehicle systems**: Relative coordinates for fault containment (front/rear isolation)
-- **☁️ Cloud deployments**: Logical zone awareness for availability regions
-- **🏭 Industrial control**: Physical zone isolation for safety-critical systems
+### CA Conversion Status
+- **Message diffusion**: Currently disabled - will be replaced with CA pattern propagation
+- **Chemistry engine**: Temporarily disabled - will become CA update rules
+- **Computation service**: Will be replaced with emergent CA computation
+- **Spatial APIs**: Will be simplified for CA monitoring only
 
-## Current Development Phase: 4B-Alt System Hardening & Observability
+## Current Development Phase: Cellular Automata Conversion
 
-**Strategic Focus**: Before adding more features, we're consolidating and hardening existing capabilities for production readiness. The system has sophisticated spatial + chemistry computing but needs validation for real-world mission-critical deployment.
+**Strategic Focus**: Convert existing spatial infrastructure into cellular automata computing substrate where computation emerges from local CA rules rather than explicit programming.
 
-**Phase 4B-Alt Goals**:
-- **Long-term stability testing**: 24+ hour continuous operation validation
-- **Comprehensive monitoring**: Enhanced metrics APIs and external observability stack
-- **Failure scenario testing**: Controlled hardware/network failure injection and recovery
-- **Performance optimization**: Resource usage profiling and optimization
-- **Production readiness**: Docker/systemd integration and deployment automation
-
-**Observability Strategy**: Hybrid approach with external metrics aggregation while maintaining distributed principles
-- Enhanced `/metrics/*` endpoints for detailed performance data
-- External collector for cluster-wide monitoring and alerting
-- Real-time dashboard for cluster health visualization
-- Self-monitoring capabilities within the distributed system
+**CA Conversion Goals**:
+- Replace message diffusion with CA pattern propagation between neighboring node grids
+- Convert chemistry reaction rules into cellular automata update rules
+- Implement cellular grids within each spatial node
+- Enable emergent computation through CA evolution
+- Maintain spatial fault isolation as CA boundary conditions
 
 ## Build/Lint/Test Commands
-- **Build main binary**: `go build -o ryx-node ./cmd/ryx-node`
+- **Build CA node**: `go build -o ryx-node ./cmd/ryx-node`
 - **Build cluster tool**: `go build -o ryx-cluster ./cmd/ryx-cluster`
-- **Run spatial+chemistry node**: `./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --zone datacenter_a --port 9010 --http-port 8010`
-- **Test spatial+chemistry cluster**: `./ryx-cluster -cmd start -profile huge` (50 nodes with spatial awareness and chemistry)
-- **Test chemistry injection**: `curl -X POST localhost:8010/inject -d '{"type": "hydrogen", "energy": 15.5, "ttl": 60}'`
-- **Monitor chemistry**: `curl localhost:8010/chemistry/concentrations` and `curl localhost:8010/chemistry/stats`
+- **Run spatial CA node**: `./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --zone datacenter_a --port 9010 --http-port 8010`
+- **Test spatial CA cluster**: `./ryx-cluster -cmd start -profile huge` (50 nodes with spatial CA substrate)
+- **Monitor spatial status**: `curl -s localhost:8010/spatial/neighbors | jq '.zone_analysis'`
+- **Check CA grid status**: `curl -s localhost:8010/status | jq '.spatial'` (CA grid monitoring to be added)
 - **Test compilation**: `go build ./...`
 - **Format code**: `go fmt ./...`
-- **Run tests**: `go test ./...` (when tests are added)
+- **Run tests**: `go test ./...` (CA-specific tests to be added)
 - **Check dependencies**: `go mod tidy && go mod verify`
 
 ## Code Style Guidelines
 
 ### Project Structure
 - **cmd/**: Main applications (`ryx-node`, `ryx-cluster`)
-- **internal/**: Private application code (node, discovery, communication, api)
+- **internal/**: Private application code (node, discovery, communication, spatial, ca)
+- **internal/ca/**: Cellular automata engine (to be added)
+- **internal/spatial/**: Spatial substrate infrastructure (CA foundation)
 - **pkg/**: Public library code (protocol definitions)
 - Use Go standard project layout
 
@@ -124,183 +114,237 @@
 - Prefer professional terminal output for production systems
 - Use consistent formatting for status messages and progress indicators
 
-### Large-Scale Cluster Guidelines (Phase 3A+)
-- **Race condition prevention**: Always use mutex protection for shared data structures
-- **Parallel operations**: Batch concurrent operations to avoid resource exhaustion
-- **Performance testing**: Measure startup times and resource usage for clusters 30+ nodes
-- **Memory management**: Monitor memory usage during large cluster operations
-- **Error handling**: Provide clear error messages for resource constraints and failures
+### Cellular Automata Guidelines
 
-### Spatial Computing Guidelines (Phase 3C+)
+#### CA Design Principles
+- **Local computation only**: CA rules operate on immediate cell neighbors
+- **No global coordination**: Computation emerges from local interactions
+- **Spatial locality**: CA patterns propagate through spatial substrate
+- **Deterministic rules**: CA update functions must be predictable and repeatable
+- **Bounded state space**: Cell states must have finite, well-defined domains
 
-#### Multi-Modal Coordinate Systems
-- **Support flexible coordinate systems**: GPS, relative, logical, none
-- **Coordinate system selection**: Choose based on deployment environment
-  - **GPS**: Fixed infrastructure (farms, data centers, smart cities)
-  - **Relative**: Mobile platforms (ships, aircraft, vehicles) - coordinates relative to platform center
-  - **Logical**: Cloud/virtual deployments (availability zones, racks)
-  - **None**: Development/testing environments without spatial requirements
-
-#### Spatial Configuration Patterns
+#### CA Implementation Patterns
 ```go
-// Example coordinate system configurations
-type SpatialConfig struct {
-    CoordSystem string    // "gps", "relative", "logical", "none"
-    X, Y, Z     *float64  // Physical/logical coordinates (nil if not applicable)
-    Zone        string    // Logical zone identifier
-    Barriers    []string  // Physical isolation boundaries
+// Example CA cell and grid structures
+type CACell struct {
+    State    int       // Current cell state
+    NextState int      // State for next update cycle
+    X, Y     int       // Position in grid
+    Energy   float64   // Energy level (inherited from chemistry)
+}
+
+type CAGrid struct {
+    Width, Height int
+    Cells        [][]CACell
+    UpdateRules  []CARule
+    Generation   int
+}
+
+type CARule struct {
+    Pattern      [][]int    // Neighborhood pattern to match
+    NewState     int        // State to transition to
+    Probability  float64    // Rule application probability
 }
 ```
 
-#### Command Line Interface for Spatial Nodes
-```bash
-# GPS-based deployment (smart city/farm)
-./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --z 10.5 --zone sector_a
+### Large-Scale CA Cluster Guidelines
+- **Race condition prevention**: Always use mutex protection for CA grid access
+- **Synchronous updates**: Ensure all cells update simultaneously per generation
+- **Performance testing**: Measure CA update rates and memory usage for large grids
+- **Memory management**: Bounded CA grid sizes, efficient state representation
+- **Error handling**: Graceful degradation when CA rules fail or produce invalid states
 
-# Vehicle/ship deployment (relative coordinates)
-./ryx-node --coord-system relative --x 15.2 --y -3.1 --z 2.8 --zone bridge
+### Spatial CA Substrate Guidelines
 
-# Cloud deployment (logical zones)
-./ryx-node --coord-system logical --zone us-east-1a --rack 42
+#### Multi-Modal Coordinate Systems (CA Substrate)
+- **Support flexible coordinate systems**: GPS, relative, logical, none - each becomes CA grid placement
+- **Coordinate system selection**: Choose based on CA deployment environment
+  - **GPS**: Fixed CA grids (research facilities, distributed installations)
+  - **Relative**: Mobile CA grids (vehicles, ships, aircraft) - CA grids relative to platform center
+  - **Logical**: Virtual CA grids (cloud deployments, logical zones)
+  - **None**: Development/testing CA grids without spatial constraints
 
-# Development (no spatial awareness)
-./ryx-node --coord-system none --zone dev_cluster
+#### Spatial Configuration Patterns (CA Substrate)
+```go
+// Example CA substrate configurations
+type SpatialConfig struct {
+    CoordSystem string    // "gps", "relative", "logical", "none"
+    X, Y, Z     *float64  // Physical/logical coordinates for CA grid placement
+    Zone        string    // Logical zone identifier for CA region
+    Barriers    []string  // Physical isolation boundaries (CA boundary conditions)
+}
+
+// CA-specific configuration
+type CAConfig struct {
+    GridWidth   int       // CA grid width (cells)
+    GridHeight  int       // CA grid height (cells)
+    UpdateRate  int       // CA generations per second
+    Rules       []CARule  // Local CA update rules
+    StateCount  int       // Number of possible cell states
+}
 ```
 
-#### Spatial Discovery Implementation
-- **Extend discovery messages**: Include coordinate information in neighbor announcements
-- **Backward compatibility**: Nodes without coordinates continue working normally
-- **Distance calculation**: Implement coordinate-system-aware distance functions
-- **Physical topology emergence**: Spatial awareness builds through local neighbor interactions
-
-#### Physical Fault Isolation Principles
-- **Physical boundaries matter**: Network topology ≠ Physical topology for fault isolation
-- **Zone-aware redundancy**: Critical data must be replicated across physical zones
-- **Maintenance isolation**: Node removal/replacement should not affect physically distant nodes
-- **Emergency partitioning**: System must isolate damaged physical areas automatically
-
-#### Distance-Based Neighbor Selection (Phase 3C.2)
-- **Hybrid scoring algorithm**: 60% network performance + 40% spatial factors
-- **Zone-aware distribution**: Target 70% same-zone, 30% cross-zone neighbors for redundancy
-- **Distance scoring by coordinate system**:
-  - **GPS**: 0-1km = 1.0, 1-10km = 0.5-1.0, >50km = 0.0
-  - **Relative**: 0-10m = 1.0, 10-100m = 0.5-1.0, >500m = 0.0  
-  - **Logical**: Same zone = 1.0, different zone = 0.2
-- **Spatial scoring components**: Zone affinity (+30%), distance penalty, system compatibility (+10%)
-
-#### Spatial Testing Guidelines
-- **Multi-zone testing**: Test fault isolation across different physical zones
-- **Coordinate system validation**: Test all coordinate systems (GPS, relative, logical, none)
-- **Distance calculation accuracy**: Verify GPS Haversine (~2.7km NYC test), Euclidean for relative
-- **Hybrid neighbor selection**: Validate 60/40 network/spatial scoring split
-- **Zone distribution**: Confirm 70/30 same-zone/cross-zone target ratios
-- **Barrier respect**: Ensure physical barriers properly isolate network segments
-- **Backward compatibility**: Non-spatial nodes must continue working unchanged
-
-#### Mission-Critical Spatial Scenarios
-- **Spaceship compartment isolation**: Engine bay failure should not affect bridge systems
-  ```bash
-  # Bridge nodes
-  ./ryx-node --coord-system relative --x 15.2 --y -3.1 --z 2.8 --zone bridge \
-    --barriers "bulkhead:bridge:engine_bay:fault"
-  
-  # Engine bay nodes  
-  ./ryx-node --coord-system relative --x 45.8 --y -8.5 --z 1.2 --zone engine_bay \
-    --barriers "bulkhead:engine_bay:bridge:fault"
-  ```
-
-- **Vehicle fault containment**: Front-end collision should not disable rear systems
-  ```bash
-  # Front sensors
-  ./ryx-node --coord-system relative --x 2.5 --y 0 --z 0.5 --zone front_sensors
-  
-  # Rear systems  
-  ./ryx-node --coord-system relative --x -2.0 --y 0 --z 0.5 --zone rear_systems
-  ```
-
-- **Smart city infrastructure**: Geographic optimization with fault isolation
-  ```bash
-  # NYC data center
-  ./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --z 10.5 --zone datacenter_a
-  
-  # LA data center (distant backup)
-  ./ryx-node --coord-system gps --x 34.0522 --y -118.2437 --z 15.0 --zone datacenter_c
-  ```
-
-#### Spatial API Design
-- **RESTful spatial endpoints**: 
-  - `GET /spatial/position` - Node's spatial configuration
-  - `POST /spatial/position` - Update spatial configuration at runtime
-  - `GET /spatial/neighbors` - Neighbors with distance and zone analysis
-  - `GET /spatial/barriers` - Barrier configuration and status
-  - `POST /spatial/distance` - Calculate distance to specified coordinates
-- **Zone analysis data**: Same-zone/cross-zone counts, ratios, and target distributions
-- **Distance calculation**: Coordinate-system-aware with proper units (meters, logical)
-- **Barrier awareness**: Message-type routing (critical vs routine vs emergency)
-- **Performance metrics**: Neighbor scoring, distance calculations, zone distribution
-
-#### Implementation Best Practices
-- **Coordinate validation**: Always validate coordinate bounds (GPS lat/lon, relative sanity checks)
-- **Distance calculation optimization**: Cache results when appropriate, use efficient algorithms
-- **Thread safety**: Protect spatial data structures with appropriate mutex patterns
-- **Error handling**: Graceful degradation when spatial data unavailable or invalid
-- **Memory management**: Bounded spatial data storage, automatic cleanup of stale neighbor data
-- **API consistency**: Consistent JSON structure across all spatial endpoints
-- **Testing coverage**: Test all coordinate systems, distance calculations, and neighbor selection scenarios
-
-## Quick Reference: Spatial Commands
-
-### Node Deployment Examples
+#### Command Line Interface for CA Nodes
 ```bash
-# Spaceship bridge node with compartment isolation
+# GPS-based CA deployment (research facility)
+./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --z 10.5 --zone sector_a \
+  --ca-grid-size 32x32 --ca-update-rate 10
+
+# Vehicle/ship CA deployment (relative coordinates)
 ./ryx-node --coord-system relative --x 15.2 --y -3.1 --z 2.8 --zone bridge \
-  --barriers "bulkhead:bridge:engine_bay:fault" --port 9010 --http-port 8010
+  --ca-grid-size 16x16 --ca-update-rate 5
 
-# Smart city GPS node
-./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --z 10.5 --zone datacenter_a \
-  --port 9011 --http-port 8011
+# Cloud CA deployment (logical zones)
+./ryx-node --coord-system logical --zone us-east-1a \
+  --ca-grid-size 64x64 --ca-update-rate 20
 
-# Vehicle system (relative to vehicle center)
-./ryx-node --coord-system relative --x 2.5 --y 0 --z 0.5 --zone front_sensors \
-  --port 9012 --http-port 8012
-
-# Cloud deployment (logical zones)
-./ryx-node --coord-system logical --zone us-east-1a --port 9013 --http-port 8013
-
-# Development/testing (no spatial awareness)
-./ryx-node --coord-system none --zone dev_cluster --port 9014 --http-port 8014
+# Development CA grid (no spatial constraints)
+./ryx-node --coord-system none --zone dev_cluster \
+  --ca-grid-size 8x8 --ca-update-rate 1
 ```
 
-### API Testing Examples
+#### CA Grid Discovery Implementation
+- **Extend discovery messages**: Include CA grid information in neighbor announcements
+- **CA grid topology**: Build network of connected CA grids through spatial discovery
+- **Boundary exchange**: CA grids share edge states with spatially adjacent neighbors
+- **CA network emergence**: Connected CA computation emerges through local grid interactions
+
+#### Physical Fault Isolation for CA
+- **Physical boundaries become CA boundaries**: Barriers define CA grid isolation
+- **Zone-aware CA redundancy**: CA patterns replicated across physical zones
+- **CA grid isolation**: Node removal/replacement preserves CA computation in distant grids
+- **Emergency CA partitioning**: Damaged areas automatically isolated via barrier boundaries
+
+#### Distance-Based CA Grid Neighbor Selection
+- **CA grid connectivity**: Determine which CA grids can exchange boundary states
+- **Zone-aware CA distribution**: Target 70% same-zone, 30% cross-zone CA connections
+- **CA interaction distance by coordinate system**:
+  - **GPS**: 0-1km = direct CA boundary exchange, 1-10km = pattern sync, >50km = isolated
+  - **Relative**: 0-10m = direct CA coupling, 10-100m = loose coupling, >500m = isolated
+  - **Logical**: Same zone = tight CA coupling, different zone = loose pattern exchange
+- **CA coupling strength**: Distance determines frequency and type of CA state exchange
+
+#### CA Testing Guidelines
+- **Multi-zone CA testing**: Test CA pattern isolation across different physical zones
+- **Coordinate system validation**: Test all coordinate systems with CA grids
+- **CA grid connectivity**: Verify spatial distance determines CA coupling strength
+- **CA boundary exchange**: Validate edge state synchronization between neighboring grids
+- **Zone distribution**: Confirm 70/30 same-zone/cross-zone CA connections
+- **Barrier respect**: Ensure physical barriers properly isolate CA grid networks
+- **CA rule validation**: Test CA update rules produce expected pattern evolution
+
+#### Mission-Critical CA Computing Scenarios
+- **Spaceship compartment CA isolation**: Engine bay CA grid failure should not affect bridge CA computation
+  ```bash
+  # Bridge CA grid
+  ./ryx-node --coord-system relative --x 15.2 --y -3.1 --z 2.8 --zone bridge \
+    --barriers "bulkhead:bridge:engine_bay:fault" --ca-grid-size 16x16
+  
+  # Engine bay CA grid
+  ./ryx-node --coord-system relative --x 45.8 --y -8.5 --z 1.2 --zone engine_bay \
+    --barriers "bulkhead:engine_bay:bridge:fault" --ca-grid-size 16x16
+  ```
+
+- **Vehicle CA fault containment**: Front-end collision should not disable rear CA systems
+  ```bash
+  # Front sensor CA grid
+  ./ryx-node --coord-system relative --x 2.5 --y 0 --z 0.5 --zone front_sensors \
+    --ca-grid-size 8x8
+  
+  # Rear system CA grid
+  ./ryx-node --coord-system relative --x -2.0 --y 0 --z 0.5 --zone rear_systems \
+    --ca-grid-size 8x8
+  ```
+
+- **Research facility CA infrastructure**: Geographic CA computation with fault isolation
+  ```bash
+  # Primary research CA grid
+  ./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --z 10.5 --zone lab_a \
+    --ca-grid-size 64x64
+  
+  # Backup research CA grid (distant)
+  ./ryx-node --coord-system gps --x 34.0522 --y -118.2437 --z 15.0 --zone lab_c \
+    --ca-grid-size 64x64
+  ```
+
+#### CA Monitoring API Design (Minimal)
+- **Read-only CA endpoints**:
+  - `GET /ca/grid` - Current CA grid state and configuration
+  - `GET /ca/stats` - CA update statistics (generations, patterns, performance)
+  - `GET /spatial/position` - Node's spatial configuration (CA grid placement)
+  - `GET /spatial/neighbors` - Connected CA grids with coupling strength
+  - `GET /spatial/barriers` - Barrier configuration (CA boundary conditions)
+- **CA metrics**: Grid size, update rate, generation count, pattern complexity
+- **Spatial substrate**: Distance calculations for CA grid connectivity
+- **No external control**: CA computation proceeds autonomously without API injection
+- **Performance monitoring**: CA update rates, memory usage, pattern evolution tracking
+
+#### CA Implementation Best Practices
+- **Coordinate validation**: Always validate spatial coordinates for CA grid placement
+- **CA grid bounds**: Ensure grid dimensions are reasonable and memory-bounded
+- **Thread safety**: Protect CA grid access with appropriate mutex patterns
+- **Synchronous updates**: All CA cells must update simultaneously per generation
+- **Error handling**: Graceful degradation when CA rules fail or produce invalid states
+- **Memory management**: Bounded CA grid sizes, efficient cell state representation
+- **CA rule validation**: Ensure CA update rules are deterministic and well-defined
+- **Performance optimization**: Efficient CA update algorithms, minimal memory allocation
+- **Testing coverage**: Test CA rules, grid connectivity, and spatial substrate integration
+
+## Quick Reference: CA Computing Commands
+
+### CA Node Deployment Examples
 ```bash
-# Check node's spatial configuration
+# Research facility CA grid with spatial placement
+./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --z 10.5 --zone lab_a \
+  --ca-grid-size 32x32 --ca-update-rate 10 --port 9010 --http-port 8010
+
+# Vehicle CA grid (relative coordinates)
+./ryx-node --coord-system relative --x 2.5 --y 0 --z 0.5 --zone front_sensors \
+  --ca-grid-size 16x16 --ca-update-rate 5 --port 9012 --http-port 8012
+
+# Cloud CA deployment (logical zones)
+./ryx-node --coord-system logical --zone us-east-1a \
+  --ca-grid-size 64x64 --ca-update-rate 20 --port 9013 --http-port 8013
+
+# Development CA grid (no spatial constraints)
+./ryx-node --coord-system none --zone dev_cluster \
+  --ca-grid-size 8x8 --ca-update-rate 1 --port 9014 --http-port 8014
+```
+
+### CA Monitoring Examples
+```bash
+# Check CA grid status and configuration
+curl -s localhost:8010/ca/grid | jq '.'
+
+# Monitor CA update statistics
+curl -s localhost:8010/ca/stats | jq '.'
+
+# Check spatial substrate (CA grid placement)
 curl -s localhost:8010/spatial/position | jq '.'
 
-# Analyze spatial neighbors and zone distribution  
+# Analyze connected CA grids and coupling strength
 curl -s localhost:8010/spatial/neighbors | jq '.zone_analysis'
 
-# Test GPS distance calculation (NYC to Times Square ~2.7km)
-curl -X POST localhost:8010/spatial/distance -H "Content-Type: application/json" -d '{
-  "coord_system": "gps", "x": 40.758, "y": -73.985, "zone": "times_square"
-}' | jq '.distance'
-
-# Check barrier configuration
+# Check barrier configuration (CA boundary conditions)
 curl -s localhost:8010/spatial/barriers | jq '.'
 
-# Monitor node status with spatial information
-curl -s localhost:8010/status | jq '.spatial'
+# Monitor overall node status with CA information
+curl -s localhost:8010/status | jq '.ca'
 ```
 
-### Validation Commands
+### CA Validation Commands
 ```bash
-# Test distance calculation accuracy
-DISTANCE=$(curl -s -X POST localhost:8010/spatial/distance -H "Content-Type: application/json" -d '{
-  "coord_system": "gps", "x": 40.758, "y": -73.985, "zone": "test"
-}' | jq -r '.distance.value')
-echo "Calculated distance: ${DISTANCE}m (expected ~2715m)"
+# Verify CA grid is running and updating
+GENERATION=$(curl -s localhost:8010/ca/stats | jq -r '.generation')
+sleep 1
+NEW_GENERATION=$(curl -s localhost:8010/ca/stats | jq -r '.generation')
+echo "CA generations: $GENERATION -> $NEW_GENERATION (should increase)"
 
-# Verify zone-aware neighbor selection
-SAME_ZONE=$(curl -s localhost:8010/spatial/neighbors | jq -r '.zone_analysis.same_zone_count')
-CROSS_ZONE=$(curl -s localhost:8010/spatial/neighbors | jq -r '.zone_analysis.cross_zone_count')
-echo "Same zone: $SAME_ZONE, Cross zone: $CROSS_ZONE (target 70/30 ratio)"
+# Verify spatial CA grid connectivity
+CONNECTED_GRIDS=$(curl -s localhost:8010/spatial/neighbors | jq -r '.zone_analysis.same_zone_count')
+echo "Connected CA grids: $CONNECTED_GRIDS (target 70/30 zone distribution)"
+
+# Check CA performance metrics
+UPDATE_RATE=$(curl -s localhost:8010/ca/stats | jq -r '.updates_per_second')
+echo "CA update rate: $UPDATE_RATE updates/sec"
 ```
