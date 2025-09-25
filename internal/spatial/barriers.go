@@ -76,9 +76,8 @@ func (b *PhysicalBarrier) BlocksPath(from, to *SpatialConfig) bool {
 
 // blocksZonePath checks if zone barrier blocks path
 func (b *PhysicalBarrier) blocksZonePath(from, to *SpatialConfig) bool {
-	// Block if trying to communicate across the specific zone boundary
-	return (from.Zone == b.ZoneA && to.Zone == b.ZoneB) ||
-		(from.Zone == b.ZoneB && to.Zone == b.ZoneA)
+	// Zone barriers are disabled in simplified model
+	return false
 }
 
 // blocksFirewallPath checks if firewall blocks path

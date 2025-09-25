@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BasicAcid/ryx/internal/ca"
 	"github.com/BasicAcid/ryx/internal/computation"
 	"github.com/BasicAcid/ryx/internal/config"
 	"github.com/BasicAcid/ryx/internal/diffusion"
@@ -62,6 +63,11 @@ type TopologyProvider interface {
 	GetTopologyMapper() *topology.TopologyMapper
 }
 
+// CAProvider interface for accessing cellular automata engine
+type CAProvider interface {
+	GetCAEngine() *ca.Engine
+}
+
 // NodeProvider combines all interfaces
 type NodeProvider interface {
 	NodeStatusProvider
@@ -71,6 +77,7 @@ type NodeProvider interface {
 	DiscoveryProvider
 	SpatialProvider
 	TopologyProvider
+	CAProvider
 }
 
 // Server provides HTTP API for node control and status
@@ -129,6 +136,10 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/chemistry/concentrations", s.handleChemistryConcentrations)
 	mux.HandleFunc("/chemistry/reactions", s.handleChemistryReactions)
 	mux.HandleFunc("/chemistry/stats", s.handleChemistryStats)
+
+	// Phase 2: Cellular Automata endpoints
+	mux.HandleFunc("/ca/grid", s.handleCAGrid)
+	mux.HandleFunc("/ca/stats", s.handleCAStats)
 
 	// Phase 4B-Alt: Unified metrics endpoint (Prometheus standard)
 	mux.HandleFunc("/metrics", s.handleUnifiedMetrics)
@@ -1017,7 +1028,6 @@ func (s *Server) handleUpdateSpatialPosition(w http.ResponseWriter, r *http.Requ
 		X           *float64 `json:"x,omitempty"`
 		Y           *float64 `json:"y,omitempty"`
 		Z           *float64 `json:"z,omitempty"`
-		Zone        string   `json:"zone"`
 		Barriers    []string `json:"barriers,omitempty"`
 	}
 
@@ -1032,7 +1042,6 @@ func (s *Server) handleUpdateSpatialPosition(w http.ResponseWriter, r *http.Requ
 		updateRequest.X,
 		updateRequest.Y,
 		updateRequest.Z,
-		updateRequest.Zone,
 		updateRequest.Barriers,
 	)
 	if err != nil {
@@ -1098,20 +1107,16 @@ func (s *Server) handleSpatialNeighbors(w http.ResponseWriter, r *http.Request) 
 		neighborsData = append(neighborsData, neighborData)
 	}
 
-	// Zone-aware neighbor selection analysis
-	sameZoneNeighbors := discoveryService.GetNeighborsInZone(nodeSpatialConfig.Zone)
-	crossZoneNeighbors := discoveryService.GetNeighborsOutsideZone(nodeSpatialConfig.Zone)
+	// Simplified neighbor analysis (zone feature removed)
+	allNeighbors := discoveryService.GetNeighborsWithDistance()
 
 	response := map[string]interface{}{
 		"neighbors":              neighborsData,
 		"neighbors_count":        len(neighbors),
 		"current_spatial_config": nodeSpatialConfig,
-		"zone_analysis": map[string]interface{}{
-			"same_zone_count":   len(sameZoneNeighbors),
-			"cross_zone_count":  len(crossZoneNeighbors),
-			"same_zone_ratio":   float64(len(sameZoneNeighbors)) / float64(len(neighbors)),
-			"target_same_zone":  0.7, // 70% target
-			"target_cross_zone": 0.3, // 30% target
+		"analysis": map[string]interface{}{
+			"total_neighbors":   len(allNeighbors),
+			"spatial_neighbors": len(neighbors),
 		},
 	}
 
@@ -1162,7 +1167,6 @@ func (s *Server) handleSpatialDistance(w http.ResponseWriter, r *http.Request) {
 		X           *float64 `json:"x,omitempty"`
 		Y           *float64 `json:"y,omitempty"`
 		Z           *float64 `json:"z,omitempty"`
-		Zone        string   `json:"zone"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&distanceRequest); err != nil {
@@ -1176,7 +1180,6 @@ func (s *Server) handleSpatialDistance(w http.ResponseWriter, r *http.Request) {
 		distanceRequest.X,
 		distanceRequest.Y,
 		distanceRequest.Z,
-		distanceRequest.Zone,
 		nil, // No barriers for distance calculation
 	)
 	if err != nil {
@@ -1330,6 +1333,42 @@ func (s *Server) handleChemistryStats(w http.ResponseWriter, r *http.Request) {
 		"message_types":       0,
 	}
 	s.writeJSON(w, emptyStats)
+}
+
+// handleCAGrid returns the current CA grid state
+// Phase 2: Cellular Automata monitoring
+func (s *Server) handleCAGrid(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	caEngine := s.node.GetCAEngine()
+	if caEngine == nil {
+		http.Error(w, "CA engine not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	grid := caEngine.GetGrid()
+	s.writeJSON(w, grid)
+}
+
+// handleCAStats returns CA engine statistics
+// Phase 2: Cellular Automata monitoring
+func (s *Server) handleCAStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	caEngine := s.node.GetCAEngine()
+	if caEngine == nil {
+		http.Error(w, "CA engine not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	stats := caEngine.GetStats()
+	s.writeJSON(w, stats)
 }
 
 // handleMetricsCluster returns comprehensive cluster health metrics
@@ -1615,11 +1654,11 @@ func (s *Server) handleMetricsSpatial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metrics := map[string]interface{}{
-		"timestamp":        time.Now().Unix(),
-		"spatial_enabled":  true,
-		"coord_system":     spatialConfig.CoordSystem,
-		"has_coordinates":  spatialConfig.HasCoordinates(),
-		"zone":             spatialConfig.Zone,
+		"timestamp":       time.Now().Unix(),
+		"spatial_enabled": true,
+		"coord_system":    spatialConfig.CoordSystem,
+		"has_coordinates": spatialConfig.HasCoordinates(),
+
 		"same_zone_count":  sameZoneCount,
 		"cross_zone_count": crossZoneCount,
 		"same_zone_ratio":  sameZoneRatio,
@@ -1889,7 +1928,6 @@ func (s *Server) collectPrometheusMetrics() string {
 
 		coordLabels := baseLabels(
 			fmt.Sprintf("coord_system=\"%s\"", spatialConfig.CoordSystem),
-			fmt.Sprintf("zone=\"%s\"", spatialConfig.Zone),
 		)
 
 		metrics = append(metrics,
@@ -2080,10 +2118,10 @@ func (s *Server) collectAllJSONMetrics() map[string]interface{} {
 		hasCoords := spatialConfig.HasCoordinates()
 
 		spatialData := map[string]interface{}{
-			"spatial_enabled":  true,
-			"coord_system":     spatialConfig.CoordSystem,
-			"has_coordinates":  hasCoords,
-			"zone":             spatialConfig.Zone,
+			"spatial_enabled": true,
+			"coord_system":    spatialConfig.CoordSystem,
+			"has_coordinates": hasCoords,
+
 			"same_zone_count":  0,
 			"cross_zone_count": 0,
 			"same_zone_ratio":  0.0,

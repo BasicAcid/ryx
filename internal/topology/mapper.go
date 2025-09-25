@@ -290,52 +290,8 @@ func (tm *TopologyMapper) buildTopologyBarriers() []*TopologyBarrier {
 
 // buildTopologyZones creates zone information from nodes
 func (tm *TopologyMapper) buildTopologyZones(nodes []*TopologyNode) []*TopologyZone {
-	zoneMap := make(map[string]*TopologyZone)
-	zoneNodes := make(map[string][]string)
-
-	// Group nodes by zone
-	for _, node := range nodes {
-		if node.SpatialConfig == nil || node.SpatialConfig.Zone == "" {
-			continue
-		}
-
-		zoneID := node.SpatialConfig.Zone
-		if _, exists := zoneMap[zoneID]; !exists {
-			zoneMap[zoneID] = &TopologyZone{
-				ID:          zoneID,
-				NodeCount:   0,
-				Nodes:       []string{},
-				Connections: 0,
-				CrossZone:   0,
-			}
-			zoneNodes[zoneID] = []string{}
-		}
-
-		zoneMap[zoneID].NodeCount++
-		zoneMap[zoneID].Nodes = append(zoneMap[zoneID].Nodes, node.NodeID)
-		zoneNodes[zoneID] = append(zoneNodes[zoneID], node.NodeID)
-	}
-
-	// Calculate zone connection statistics
-	// This is simplified - in reality we'd need connection info from all nodes
-	for _, zone := range zoneMap {
-		// For now, assume each node has at least one connection within its zone
-		zone.Connections = zone.NodeCount - 1
-		if zone.Connections < 0 {
-			zone.Connections = 0
-		}
-
-		// Estimate cross-zone connections
-		zone.CrossZone = zone.NodeCount // Simplified estimate
-	}
-
-	// Convert map to slice
-	var zones []*TopologyZone
-	for _, zone := range zoneMap {
-		zones = append(zones, zone)
-	}
-
-	return zones
+	// Zone feature removed - return empty zones
+	return []*TopologyZone{}
 }
 
 // buildTopologyMetadata creates metadata for the topology

@@ -40,7 +40,6 @@ type AnnounceMessage struct {
 	X           *float64 `json:"x,omitempty"`
 	Y           *float64 `json:"y,omitempty"`
 	Z           *float64 `json:"z,omitempty"`
-	Zone        string   `json:"zone,omitempty"`
 	Barriers    []string `json:"barriers,omitempty"`
 }
 
@@ -229,7 +228,6 @@ func (s *Service) handleAnnouncement(data []byte, addr *net.UDPAddr) {
 		spatialConfig, err := spatial.NewSpatialConfig(
 			msg.CoordSystem,
 			msg.X, msg.Y, msg.Z,
-			msg.Zone,
 			msg.Barriers,
 		)
 		if err != nil {
@@ -329,7 +327,6 @@ func (s *Service) sendAnnouncement() {
 		msg.X = s.spatialConfig.X
 		msg.Y = s.spatialConfig.Y
 		msg.Z = s.spatialConfig.Z
-		msg.Zone = s.spatialConfig.Zone
 		msg.Barriers = s.spatialConfig.Barriers
 	}
 
@@ -491,35 +488,7 @@ func (s *Service) removeWorstNeighbor() {
 	}
 }
 
-// Phase 3C.2: Zone-aware neighbor selection methods
-
-// GetNeighborsInZone returns neighbors in the specified zone
-func (s *Service) GetNeighborsInZone(zone string) []*Neighbor {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var zoneNeighbors []*Neighbor
-	for _, neighbor := range s.neighbors {
-		if neighbor.SpatialConfig != nil && neighbor.SpatialConfig.Zone == zone {
-			zoneNeighbors = append(zoneNeighbors, neighbor)
-		}
-	}
-	return zoneNeighbors
-}
-
-// GetNeighborsOutsideZone returns neighbors not in the specified zone
-func (s *Service) GetNeighborsOutsideZone(zone string) []*Neighbor {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var outsideNeighbors []*Neighbor
-	for _, neighbor := range s.neighbors {
-		if neighbor.SpatialConfig == nil || neighbor.SpatialConfig.Zone != zone {
-			outsideNeighbors = append(outsideNeighbors, neighbor)
-		}
-	}
-	return outsideNeighbors
-}
+// Phase 2 CA: Simplified neighbor selection (zone methods removed)
 
 // GetNeighborsWithDistance returns all neighbors with their distance information
 func (s *Service) GetNeighborsWithDistance() []*Neighbor {
@@ -545,15 +514,10 @@ func (s *Service) SelectOptimalNeighbors() []*Neighbor {
 		maxNeighbors = s.runtimeParams.GetInt("max_neighbors", 8)
 	}
 
-	sameZone := s.GetNeighborsInZone(s.spatialConfig.Zone)
-	crossZone := s.GetNeighborsOutsideZone(s.spatialConfig.Zone)
+	// Simplified neighbor selection - just select best scoring neighbors overall
+	allNeighbors := s.GetNeighborsWithDistance()
 
-	// Target: 70% same-zone, 30% cross-zone for redundancy
-	sameZoneTarget := int(0.7 * float64(maxNeighbors))
-	crossZoneTarget := maxNeighbors - sameZoneTarget
-
-	optimal := s.selectBestByScore(sameZone, sameZoneTarget)
-	optimal = append(optimal, s.selectBestByScore(crossZone, crossZoneTarget)...)
+	optimal := s.selectBestByScore(allNeighbors, maxNeighbors)
 
 	return optimal
 }

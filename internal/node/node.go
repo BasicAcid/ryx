@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/BasicAcid/ryx/internal/api"
+	"github.com/BasicAcid/ryx/internal/ca"
 	"github.com/BasicAcid/ryx/internal/communication"
 	"github.com/BasicAcid/ryx/internal/computation"
 	"github.com/BasicAcid/ryx/internal/config"
@@ -28,6 +29,10 @@ type Config struct {
 
 	// Phase 3C.1: Spatial configuration
 	SpatialConfig *spatial.SpatialConfig
+
+	// Phase 2: CA configuration
+	CAGridWidth  int // CA grid width (default: 16)
+	CAGridHeight int // CA grid height (default: 16)
 }
 
 // Node represents a single ryx node
@@ -49,6 +54,12 @@ type Node struct {
 
 	// Phase 3C.3a: Topology mapping
 	topologyMapper *topology.TopologyMapper
+
+	// Phase 2: Cellular Automata
+	caEngine *ca.Engine
+
+	// Phase 3: CA Grid Connectivity
+	caNetwork *ca.NetworkManager
 
 	mu      sync.RWMutex
 	running bool
@@ -72,7 +83,6 @@ func New(cfg *Config) (*Node, error) {
 		// Default to no spatial awareness for backward compatibility
 		spatialConfig = &spatial.SpatialConfig{
 			CoordSystem: spatial.CoordSystemNone,
-			Zone:        "default",
 		}
 	}
 
@@ -80,12 +90,30 @@ func New(cfg *Config) (*Node, error) {
 	barrierManager := spatial.NewBarrierManager()
 	barrierManager.LoadBarriersFromConfig(spatialConfig)
 
+	// Phase 2: Initialize CA configuration with defaults
+	caGridWidth := cfg.CAGridWidth
+	if caGridWidth <= 0 {
+		caGridWidth = 16 // Default grid size
+	}
+	caGridHeight := cfg.CAGridHeight
+	if caGridHeight <= 0 {
+		caGridHeight = 16 // Default grid size
+	}
+
+	// Initialize CA engine
+	caEngine := ca.NewEngine(nodeID, caGridWidth, caGridHeight)
+
+	// Phase 3: Initialize CA network manager
+	caNetwork := ca.NewNetworkManager(nodeID, caEngine, nil, spatialConfig)
+
 	node := &Node{
 		id:             nodeID,
 		config:         cfg,
 		runtimeParams:  runtimeParams,
 		behaviorMod:    behaviorMod,
 		barrierManager: barrierManager,
+		caEngine:       caEngine,
+		caNetwork:      caNetwork,
 	}
 
 	// Phase 3B: Initialize services with advanced behavior modification
@@ -96,6 +124,9 @@ func New(cfg *Config) (*Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discovery service: %w", err)
 	}
+
+	// Phase 3: Wire up CA network manager with discovery service
+	node.caNetwork = ca.NewNetworkManager(nodeID, caEngine, node.discovery, spatialConfig)
 
 	// Initialize communication service with fault pattern learning
 	node.comm, err = communication.NewWithConfig(cfg.Port, nodeID, behaviorMod)
@@ -156,6 +187,25 @@ func (n *Node) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start computation: %w", err)
 	}
 
+	// Phase 2: Start CA engine
+	if n.caEngine != nil {
+		n.caEngine.Start()
+		// Initialize with a simple pattern for testing
+		n.caEngine.InitializePattern("blinker")
+		log.Printf("Node %s: CA engine started with test pattern", n.id)
+	}
+
+	// Phase 3: Start CA network manager
+	if n.caNetwork != nil {
+		n.caNetwork.SetCommunicationService(n.comm)
+		n.caNetwork.Start()
+
+		// Set CA message handler in communication service
+		n.comm.SetCAMessageHandler(n.caNetwork)
+
+		log.Printf("Node %s: CA network manager started", n.id)
+	}
+
 	// Wire up service dependencies for Phase 2B inter-node diffusion
 	n.diffusion.SetCommunication(n.comm)
 	n.diffusion.SetDiscovery(n.discovery)
@@ -193,6 +243,19 @@ func (n *Node) Stop() {
 	if n.api != nil {
 		n.api.Stop()
 	}
+
+	// Phase 3: Stop CA network manager
+	if n.caNetwork != nil {
+		n.caNetwork.Stop()
+		log.Printf("Node %s: CA network manager stopped", n.id)
+	}
+
+	// Phase 2: Stop CA engine
+	if n.caEngine != nil {
+		n.caEngine.Stop()
+		log.Printf("Node %s: CA engine stopped", n.id)
+	}
+
 	if n.computation != nil {
 		n.computation.Stop()
 	}
@@ -256,9 +319,9 @@ func (n *Node) GetStatus() map[string]interface{} {
 			"x":            spatialConfig.X,
 			"y":            spatialConfig.Y,
 			"z":            spatialConfig.Z,
-			"zone":         spatialConfig.Zone,
-			"barriers":     spatialConfig.Barriers,
-			"has_coords":   spatialConfig.HasCoordinates(),
+
+			"barriers":   spatialConfig.Barriers,
+			"has_coords": spatialConfig.HasCoordinates(),
 		}
 
 		// Add barrier manager status (direct field access)
@@ -275,7 +338,6 @@ func (n *Node) GetStatus() map[string]interface{} {
 			"x":            nil,
 			"y":            nil,
 			"z":            nil,
-			"zone":         "default",
 			"barriers":     nil,
 			"has_coords":   false,
 		}
@@ -337,7 +399,6 @@ func (n *Node) GetSpatialConfig() *spatial.SpatialConfig {
 	// Return default spatial config for backward compatibility
 	return &spatial.SpatialConfig{
 		CoordSystem: spatial.CoordSystemNone,
-		Zone:        "default",
 	}
 }
 
@@ -404,6 +465,18 @@ func (n *Node) GetClusterID() string {
 func (n *Node) GetTopologyMapper() *topology.TopologyMapper {
 	// TopologyMapper is set once at startup and has its own mutex, direct access is safe
 	return n.topologyMapper
+}
+
+// GetCAEngine returns the CA engine for API access (lock-free)
+func (n *Node) GetCAEngine() *ca.Engine {
+	// CA engine is set once at startup and has its own mutex, direct access is safe
+	return n.caEngine
+}
+
+// GetCANetwork returns the CA network manager for API access (lock-free)
+func (n *Node) GetCANetwork() *ca.NetworkManager {
+	// CA network manager is set once at startup and has its own mutex, direct access is safe
+	return n.caNetwork
 }
 
 // generateNodeID creates a random node identifier

@@ -33,15 +33,12 @@ type SpatialConfig struct {
 	Y *float64 `json:"y,omitempty"`
 	Z *float64 `json:"z,omitempty"`
 
-	// Logical zone identifier (always present)
-	Zone string `json:"zone"`
-
 	// Physical isolation boundaries this node respects
 	Barriers []string `json:"barriers,omitempty"`
 }
 
 // NewSpatialConfig creates a new spatial configuration with validation
-func NewSpatialConfig(coordSystem string, x, y, z *float64, zone string, barriers []string) (*SpatialConfig, error) {
+func NewSpatialConfig(coordSystem string, x, y, z *float64, barriers []string) (*SpatialConfig, error) {
 	cs := CoordinateSystem(strings.ToLower(coordSystem))
 
 	config := &SpatialConfig{
@@ -49,7 +46,6 @@ func NewSpatialConfig(coordSystem string, x, y, z *float64, zone string, barrier
 		X:           x,
 		Y:           y,
 		Z:           z,
-		Zone:        zone,
 		Barriers:    barriers,
 	}
 
@@ -106,10 +102,7 @@ func (sc *SpatialConfig) validateRelative() error {
 
 // validateLogical validates logical coordinate system configuration
 func (sc *SpatialConfig) validateLogical() error {
-	// Logical systems primarily use zones, coordinates are optional
-	if sc.Zone == "" {
-		return fmt.Errorf("logical coordinate system requires a zone identifier")
-	}
+	// Logical systems are valid without coordinates or zones in the simplified model
 	return nil
 }
 
@@ -130,7 +123,6 @@ func (sc *SpatialConfig) HasCoordinates() bool {
 // IsEmpty returns true if this is an empty/default spatial configuration
 func (sc *SpatialConfig) IsEmpty() bool {
 	return sc.CoordSystem == CoordSystemNone &&
-		sc.Zone == "" &&
 		!sc.HasCoordinates() &&
 		len(sc.Barriers) == 0
 }
@@ -165,10 +157,6 @@ func (sc *SpatialConfig) String() string {
 		}
 		coords += ")"
 		parts = append(parts, coords)
-	}
-
-	if sc.Zone != "" {
-		parts = append(parts, fmt.Sprintf("zone=%s", sc.Zone))
 	}
 
 	if len(sc.Barriers) > 0 {

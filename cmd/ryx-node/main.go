@@ -25,8 +25,7 @@ func main() {
 	x := flag.Float64("x", 0, "X coordinate (longitude for GPS, meters for relative)")
 	y := flag.Float64("y", 0, "Y coordinate (latitude for GPS, meters for relative)")
 	z := flag.Float64("z", 0, "Z coordinate (altitude/height in meters)")
-	zone := flag.String("zone", "default", "Logical zone identifier")
-	barriers := flag.String("barriers", "", "Comma-separated list of barriers (format: type:zoneA:zoneB:isolation)")
+	barriers := flag.String("barriers", "", "Comma-separated list of barriers")
 
 	flag.Parse()
 
@@ -35,7 +34,7 @@ func main() {
 	defer cancel()
 
 	// Parse spatial configuration from CLI flags
-	spatialConfig, err := parseSpatialConfig(*coordSystem, *x, *y, *z, *zone, *barriers)
+	spatialConfig, err := parseSpatialConfig(*coordSystem, *x, *y, *z, *barriers)
 	if err != nil {
 		log.Fatalf("Invalid spatial configuration: %v", err)
 	}
@@ -74,7 +73,7 @@ func main() {
 }
 
 // parseSpatialConfig creates a spatial configuration from CLI arguments
-func parseSpatialConfig(coordSystem string, x, y, z float64, zone, barriers string) (*spatial.SpatialConfig, error) {
+func parseSpatialConfig(coordSystem string, x, y, z float64, barriers string) (*spatial.SpatialConfig, error) {
 	// Handle coordinate values - only set if not zero or if coord system requires them
 	var xPtr, yPtr, zPtr *float64
 
@@ -101,5 +100,5 @@ func parseSpatialConfig(coordSystem string, x, y, z float64, zone, barriers stri
 		}
 	}
 
-	return spatial.NewSpatialConfig(coordSystem, xPtr, yPtr, zPtr, zone, barrierList)
+	return spatial.NewSpatialConfig(coordSystem, xPtr, yPtr, zPtr, barrierList)
 }

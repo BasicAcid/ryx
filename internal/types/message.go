@@ -126,3 +126,33 @@ type ComputationService interface {
 	GetComputationResult(taskID string) (*ComputationResult, bool)
 	GetComputationStats() map[string]interface{}
 }
+
+// Phase 3: CA Grid Connectivity Message Types
+
+// CABoundaryMessage represents boundary state exchange between CA grids
+type CABoundaryMessage struct {
+	Type       string `json:"type"`       // Always "ca_boundary"
+	NodeID     string `json:"node_id"`    // Source node ID
+	Generation int    `json:"generation"` // CA generation number
+
+	// Boundary states for each edge
+	North []int `json:"north,omitempty"` // Top edge states (0=dead, 1=alive)
+	South []int `json:"south,omitempty"` // Bottom edge states
+	East  []int `json:"east,omitempty"`  // Right edge states
+	West  []int `json:"west,omitempty"`  // Left edge states
+
+	Timestamp int64 `json:"timestamp"` // Message timestamp
+}
+
+// CAConnectionRequest represents a request to connect CA grids
+type CAConnectionRequest struct {
+	Type        string   `json:"type"`       // Always "ca_connect"
+	NodeID      string   `json:"node_id"`    // Requesting node ID
+	GridWidth   int      `json:"grid_width"` // CA grid dimensions
+	GridHeight  int      `json:"grid_height"`
+	SpatialX    *float64 `json:"spatial_x,omitempty"` // Spatial coordinates
+	SpatialY    *float64 `json:"spatial_y,omitempty"`
+	SpatialZ    *float64 `json:"spatial_z,omitempty"`
+	CoordSystem string   `json:"coord_system"` // Coordinate system
+	Timestamp   int64    `json:"timestamp"`    // Request timestamp
+}

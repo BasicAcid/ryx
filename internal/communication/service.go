@@ -36,6 +36,9 @@ type Service struct {
 
 	// Phase 3B: Fault pattern learning
 	behaviorMod config.BehaviorModifier
+
+	// Phase 3: CA message handling
+	caMessageHandler types.InfoMessageHandler
 }
 
 // New creates a new communication service
@@ -131,6 +134,13 @@ func (s *Service) SetDiffusionService(diffService types.InfoMessageHandler) {
 	s.diffusionService = diffService
 }
 
+// SetCAMessageHandler sets the CA message handler for CA boundary messages
+func (s *Service) SetCAMessageHandler(handler types.InfoMessageHandler) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.caMessageHandler = handler
+}
+
 // SendInfoMessage sends an InfoMessage to a specific node with performance tracking
 func (s *Service) SendInfoMessage(nodeID, address string, port int, infoMsg *types.InfoMessage) error {
 	startTime := time.Now()
@@ -210,6 +220,8 @@ func (s *Service) handleMessage(data []byte, addr *net.UDPAddr) {
 		s.handlePong(&msg, addr)
 	case "info":
 		s.handleInfo(&msg, addr)
+	case "ca_boundary":
+		s.handleCABoundary(&msg, addr)
 	default:
 		log.Printf("Unknown message type: %s", msg.Type)
 	}
@@ -263,6 +275,33 @@ func (s *Service) handleInfo(msg *Message, addr *net.UDPAddr) {
 	err = s.diffusionService.HandleInfoMessage(infoMsg, msg.From)
 	if err != nil {
 		log.Printf("Failed to handle info message: %v", err)
+	}
+}
+
+// handleCABoundary processes CA boundary messages
+func (s *Service) handleCABoundary(msg *Message, addr *net.UDPAddr) {
+	log.Printf("Received CA boundary message from %s", msg.From)
+
+	s.mu.RLock()
+	handler := s.caMessageHandler
+	s.mu.RUnlock()
+
+	if handler == nil {
+		log.Printf("No CA message handler configured, ignoring CA boundary message")
+		return
+	}
+
+	// Convert communication message to InfoMessage
+	infoMsg, err := s.convertToInfoMessage(msg)
+	if err != nil {
+		log.Printf("Failed to convert CA boundary message to InfoMessage: %v", err)
+		return
+	}
+
+	// Route to CA message handler
+	err = handler.HandleInfoMessage(infoMsg, msg.From)
+	if err != nil {
+		log.Printf("Failed to handle CA boundary message: %v", err)
 	}
 }
 

@@ -113,13 +113,10 @@ func calculateEuclideanDistance(from, to *SpatialConfig, unit string) (*Distance
 	}, nil
 }
 
-// calculateLogicalDistance computes logical distance (same zone = 0, different zone = 1)
+// calculateLogicalDistance computes logical distance (simplified model)
 func calculateLogicalDistance(from, to *SpatialConfig) (*Distance, error) {
-	// Logical distance based on zone membership
-	distance := 0.0
-	if from.Zone != to.Zone {
-		distance = 1.0
-	}
+	// Logical distance simplified - use small constant for same node, larger for different
+	distance := 1.0 // Base logical distance
 
 	// If both have coordinates, add small Euclidean component
 	if from.HasCoordinates() && to.HasCoordinates() {
@@ -146,12 +143,10 @@ func getCoordOrDefault(coord *float64, defaultValue float64) float64 {
 	return *coord
 }
 
-// IsInSameZone returns true if two nodes are in the same logical zone
+// IsInSameZone returns true if two nodes are in the same logical zone (simplified - always false)
 func IsInSameZone(config1, config2 *SpatialConfig) bool {
-	if config1 == nil || config2 == nil {
-		return false
-	}
-	return config1.Zone != "" && config1.Zone == config2.Zone
+	// Zone concept removed - nodes are no longer grouped by zones
+	return false
 }
 
 // IsWithinDistance returns true if two nodes are within the specified distance

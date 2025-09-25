@@ -31,9 +31,9 @@
 ## Build/Lint/Test Commands
 - **Build CA node**: `go build -o ryx-node ./cmd/ryx-node`
 - **Build cluster tool**: `go build -o ryx-cluster ./cmd/ryx-cluster`
-- **Run spatial CA node**: `./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --zone datacenter_a --port 9010 --http-port 8010`
+- **Run spatial CA node**: `./ryx-node --coord-system gps --x 40.7128 --y -74.0060 --port 9010 --http-port 8010`
 - **Test spatial CA cluster**: `./ryx-cluster -cmd start -profile huge` (50 nodes with spatial CA substrate)
-- **Monitor spatial status**: `curl -s localhost:8010/spatial/neighbors | jq '.zone_analysis'`
+- **Monitor spatial status**: `curl -s localhost:8010/spatial/neighbors | jq '.analysis'`
 - **Check CA grid status**: `curl -s localhost:8010/status | jq '.spatial'` (CA grid monitoring to be added)
 - **Test compilation**: `go build ./...`
 - **Format code**: `go fmt ./...`
