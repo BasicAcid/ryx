@@ -214,6 +214,7 @@ func (nm *NetworkManager) updateCAConnections() {
 
 	// Get current spatial neighbors
 	neighbors := nm.discovery.GetNeighborsWithDistance()
+	log.Printf("CA Network[%s]: Found %d spatial neighbors to evaluate for CA connections", nm.nodeID, len(neighbors))
 
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
@@ -225,7 +226,11 @@ func (nm *NetworkManager) updateCAConnections() {
 		activeNeighbors[neighbor.NodeID] = true
 
 		// Check if we should connect to this neighbor
-		if nm.shouldConnectToNeighbor(neighbor) {
+		shouldConnect := nm.shouldConnectToNeighbor(neighbor)
+		log.Printf("CA Network[%s]: Neighbor %s should connect: %v (distance: %v)",
+			nm.nodeID, neighbor.NodeID, shouldConnect, neighbor.Distance)
+
+		if shouldConnect {
 			// Create or update connection
 			if _, exists := nm.connectedGrids[neighbor.NodeID]; !exists {
 				conn := &GridConnection{
@@ -240,6 +245,8 @@ func (nm *NetworkManager) updateCAConnections() {
 				nm.connectedGrids[neighbor.NodeID] = conn
 				log.Printf("CA Network[%s]: Connected to CA grid %s (%s)",
 					nm.nodeID, neighbor.NodeID, conn.Direction)
+			} else {
+				log.Printf("CA Network[%s]: CA grid connection to %s already exists", nm.nodeID, neighbor.NodeID)
 			}
 		}
 	}
@@ -252,13 +259,24 @@ func (nm *NetworkManager) updateCAConnections() {
 			log.Printf("CA Network[%s]: Disconnected from CA grid %s", nm.nodeID, nodeID)
 		}
 	}
+
+	log.Printf("CA Network[%s]: Total CA grid connections: %d", nm.nodeID, len(nm.connectedGrids))
 }
 
 // shouldConnectToNeighbor determines if we should connect CA grids to this neighbor
 func (nm *NetworkManager) shouldConnectToNeighbor(neighbor *discovery.Neighbor) bool {
-	// For now, connect to all neighbors with valid distance
-	// This can be enhanced with spatial positioning logic later
-	return neighbor.Distance != nil && !isInfiniteDistance(neighbor.Distance)
+	// Always connect to discovered neighbors for CA grid connectivity
+	// Even if spatial distance is infinite (coord-system: none), CA grids can still connect
+	// This enables local CA boundary exchange regardless of spatial positioning
+
+	// For nodes with no spatial config, we still want CA connectivity
+	if neighbor.Distance == nil {
+		return true // No distance calculated, but still allow CA connection
+	}
+
+	// For nodes with spatial config, connect regardless of distance
+	// CA grids can connect even across infinite spatial distances
+	return true
 }
 
 // calculateDirection determines the spatial direction to a neighbor (simplified)

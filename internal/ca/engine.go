@@ -37,11 +37,11 @@ type Cell struct {
 
 // Grid represents a 2D cellular automata grid
 type Grid struct {
-	Width      int      `json:"width"`
-	Height     int      `json:"height"`
-	Cells      [][]Cell `json:"cells"`
-	Generation int      `json:"generation"`
-	mu         sync.RWMutex
+	Width      int          `json:"width"`
+	Height     int          `json:"height"`
+	Cells      [][]Cell     `json:"cells"`
+	Generation int          `json:"generation"`
+	mu         sync.RWMutex `json:"-"` // Exclude mutex from JSON serialization
 }
 
 // Engine manages cellular automata computation for a node
@@ -60,6 +60,10 @@ type Engine struct {
 	neighborBoundaries map[string]*BoundaryStates // Remote boundary states by node ID
 	boundaryMu         sync.RWMutex               // Separate mutex for boundary state access
 	boundaryCallback   func(*BoundaryStates)      // Callback to broadcast boundary states
+
+	// Cached boundary snapshots to avoid locking during neighbor counting
+	cachedBoundaries map[string]*BoundaryStates // Cached copy for safe reading
+	cacheMu          sync.RWMutex               // Mutex for boundary cache
 }
 
 // NewEngine creates a new CA engine for a node
@@ -74,6 +78,7 @@ func NewEngine(nodeID string, width, height int) *Engine {
 
 		// Phase 3: Initialize boundary exchange
 		neighborBoundaries: make(map[string]*BoundaryStates),
+		cachedBoundaries:   make(map[string]*BoundaryStates),
 	}
 
 	engine.grid = engine.createGrid(width, height)
@@ -188,22 +193,27 @@ func (e *Engine) updateGeneration() {
 	e.grid.Generation++
 	e.updateStats()
 
-	// Phase 3: Boundary broadcasting temporarily disabled - will be re-implemented with proper lock ordering
-	// if e.boundaryCallback != nil {
-	//	boundaries := e.GetBoundaryStates()
-	//	go e.boundaryCallback(boundaries)
-	// }
+	// Phase 3: Broadcast boundary states asynchronously to avoid blocking CA updates
+	if e.boundaryCallback != nil {
+		// Create boundary states outside of any locks to avoid deadlock
+		go func() {
+			boundaries := e.GetBoundaryStates()
+			if boundaries != nil {
+				e.boundaryCallback(boundaries)
+			}
+		}()
+	}
 
 	if e.grid.Generation%10 == 0 {
 		log.Printf("CA[%s]: Generation %d completed", e.nodeID, e.grid.Generation)
 	}
 }
 
-// countLiveNeighbors counts living neighbors (temporarily using wrap-around to avoid deadlock)
+// countLiveNeighbors counts living neighbors using boundary exchange with connected CA grids
 func (e *Engine) countLiveNeighbors(x, y int) int {
 	count := 0
 
-	// Check all 8 neighbors with wrap-around (original working logic)
+	// Check all 8 neighbors
 	for dy := -1; dy <= 1; dy++ {
 		for dx := -1; dx <= 1; dx++ {
 			if dx == 0 && dy == 0 {
@@ -212,20 +222,17 @@ func (e *Engine) countLiveNeighbors(x, y int) int {
 
 			nx, ny := x+dx, y+dy
 
-			// Handle boundaries with wrap-around (restore original logic)
-			if nx < 0 {
-				nx = e.grid.Width - 1
-			} else if nx >= e.grid.Width {
-				nx = 0
+			// Handle in-bounds neighbors normally
+			if nx >= 0 && nx < e.grid.Width && ny >= 0 && ny < e.grid.Height {
+				if e.grid.Cells[ny][nx].State == Alive {
+					count++
+				}
+				continue
 			}
 
-			if ny < 0 {
-				ny = e.grid.Height - 1
-			} else if ny >= e.grid.Height {
-				ny = 0
-			}
-
-			if e.grid.Cells[ny][nx].State == Alive {
+			// Handle boundary neighbors - get state from connected neighbor grids or wrap-around
+			neighborState := e.getBoundaryNeighborState(x, y, dx, dy)
+			if neighborState == Alive {
 				count++
 			}
 		}
@@ -235,11 +242,58 @@ func (e *Engine) countLiveNeighbors(x, y int) int {
 }
 
 // getBoundaryNeighborState gets the state of a boundary neighbor from connected grids
-// For now, just return Dead to avoid deadlock - we'll implement proper boundary exchange later
 func (e *Engine) getBoundaryNeighborState(x, y, dx, dy int) CellState {
-	// Temporarily disable boundary exchange to avoid deadlock
-	// This will be re-enabled once we implement proper lock ordering
-	return Dead
+	// Use cached boundaries to avoid locking conflicts with update loop
+	e.cacheMu.RLock()
+	defer e.cacheMu.RUnlock()
+
+	// Calculate which boundary this neighbor would be on
+	nx, ny := x+dx, y+dy
+
+	// Simple boundary mapping - enhanced spatial positioning will be added later
+	if ny < 0 {
+		// Need North boundary from a neighbor (their South boundary)
+		for _, boundary := range e.cachedBoundaries {
+			if x >= 0 && x < len(boundary.South) {
+				return boundary.South[x]
+			}
+		}
+	} else if ny >= e.grid.Height {
+		// Need South boundary from a neighbor (their North boundary)
+		for _, boundary := range e.cachedBoundaries {
+			if x >= 0 && x < len(boundary.North) {
+				return boundary.North[x]
+			}
+		}
+	} else if nx < 0 {
+		// Need West boundary from a neighbor (their East boundary)
+		for _, boundary := range e.cachedBoundaries {
+			if y >= 0 && y < len(boundary.East) {
+				return boundary.East[y]
+			}
+		}
+	} else if nx >= e.grid.Width {
+		// Need East boundary from a neighbor (their West boundary)
+		for _, boundary := range e.cachedBoundaries {
+			if y >= 0 && y < len(boundary.West) {
+				return boundary.West[y]
+			}
+		}
+	}
+
+	// No connected neighbor found for this boundary - use wrap-around as fallback
+	if nx < 0 {
+		nx = e.grid.Width - 1
+	} else if nx >= e.grid.Width {
+		nx = 0
+	}
+	if ny < 0 {
+		ny = e.grid.Height - 1
+	} else if ny >= e.grid.Height {
+		ny = 0
+	}
+
+	return e.grid.Cells[ny][nx].State
 }
 
 // updateStats updates performance statistics
@@ -270,6 +324,10 @@ func (e *Engine) SetCell(x, y int, state CellState) error {
 
 // GetGrid returns a copy of the current grid state
 func (e *Engine) GetGrid() *Grid {
+	if e.grid == nil {
+		return nil
+	}
+
 	e.grid.mu.RLock()
 	defer e.grid.mu.RUnlock()
 
@@ -422,25 +480,37 @@ func (e *Engine) GetBoundaryStates() *BoundaryStates {
 
 // UpdateNeighborBoundary updates the boundary states from a neighboring node
 func (e *Engine) UpdateNeighborBoundary(neighborNodeID string, boundaries *BoundaryStates) {
-	e.boundaryMu.Lock()
-	defer e.boundaryMu.Unlock()
-
-	if boundaries != nil && boundaries.NodeID == neighborNodeID {
-		e.neighborBoundaries[neighborNodeID] = boundaries
-		log.Printf("CA[%s]: Updated boundary states from neighbor %s (gen %d)",
-			e.nodeID, neighborNodeID, boundaries.Generation)
+	if boundaries == nil || boundaries.NodeID != neighborNodeID {
+		return
 	}
+
+	// Update the main boundary storage
+	e.boundaryMu.Lock()
+	e.neighborBoundaries[neighborNodeID] = boundaries
+	e.boundaryMu.Unlock()
+
+	// Update the cached copy for safe reading during CA updates (separate lock)
+	e.cacheMu.Lock()
+	e.cachedBoundaries[neighborNodeID] = boundaries
+	e.cacheMu.Unlock()
+
+	log.Printf("CA[%s]: Updated boundary states from neighbor %s (gen %d)",
+		e.nodeID, neighborNodeID, boundaries.Generation)
 }
 
 // RemoveNeighborBoundary removes boundary states when a neighbor disconnects
 func (e *Engine) RemoveNeighborBoundary(neighborNodeID string) {
+	// Remove from main storage
 	e.boundaryMu.Lock()
-	defer e.boundaryMu.Unlock()
+	delete(e.neighborBoundaries, neighborNodeID)
+	e.boundaryMu.Unlock()
 
-	if _, exists := e.neighborBoundaries[neighborNodeID]; exists {
-		delete(e.neighborBoundaries, neighborNodeID)
-		log.Printf("CA[%s]: Removed boundary states from disconnected neighbor %s", e.nodeID, neighborNodeID)
-	}
+	// Remove from cache
+	e.cacheMu.Lock()
+	delete(e.cachedBoundaries, neighborNodeID)
+	e.cacheMu.Unlock()
+
+	log.Printf("CA[%s]: Removed boundary states from disconnected neighbor %s", e.nodeID, neighborNodeID)
 }
 
 // GetConnectedNeighbors returns list of neighbors with active boundary connections
